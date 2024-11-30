@@ -1,18 +1,21 @@
 import math
+import random
 #import string
 
+#import cv2
+import matplotlib.pyplot as plt
+import numpy as np
 #import torch
 import torch.nn as nn
-import numpy as np
-#import cv2
-# from skimage.measure.simple_metrics import compare_psnr
+import torchvision.models as models
+import yaml
+from PIL import Image
+from skimage.measure.simple_metrics import compare_psnr
 from skimage.metrics import mean_squared_error as compare_mse
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 from skimage.metrics import structural_similarity as compare_ssim
-import random
 
-from PIL import Image
-import matplotlib.pyplot as plt
+from models import VGG16
 
 
 def weights_init_kaiming(m):
@@ -291,10 +294,6 @@ def add_watermark_noise_test(img_train, occupancy=50, img_id=3, scale_img=1.5, s
     return img_train
 
 
-import torchvision.models as models
-from models import VGG16
-
-
 def load_froze_vgg16():
     # finetunning
     model_pretrain_vgg = models.vgg16(pretrained=True)
@@ -315,6 +314,7 @@ def load_froze_vgg16():
 
     model_vgg = nn.DataParallel(net_vgg, device_ids=device_ids).cuda()
     return model_vgg
+
 
 def data_augmentation(image, mode):
     out = np.transpose(image, (1, 2, 0))
@@ -346,10 +346,8 @@ def data_augmentation(image, mode):
         out = np.rot90(out, k=3)
         out = np.flipud(out)
     return np.transpose(out, (2, 0, 1))
-import yaml
 
 
-# get configs
 def get_config(config):
     with open(config, 'r') as stream:
-        return yaml.load(stream)
+        return yaml.load(stream, Loader=yaml.FullLoader)
