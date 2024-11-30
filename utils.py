@@ -72,7 +72,7 @@ def add_watermark_noise(img_train, occupancy=50, self_surpervision=False, same_r
     # Noise2Noise要确保类标和输入的水印为同一张
     if self_surpervision:
         random_img = same_random
-    data_path = "watermark/translucence/"
+    data_path = "watermarks/"
     watermark = Image.open(data_path + str(random_img) + ".png")
     watermark = watermark.convert("RGBA")
     w, h = watermark.size
@@ -149,7 +149,7 @@ def add_watermark_noise_B(img_train, occupancy=50, self_surpervision=False, same
     # Noise2Noise has to make sure that the class label and the input watermark are the same one
     if self_surpervision:
         random_img = same_random
-    data_path = "watermark/translucence/"
+    data_path = "watermarks/"
     watermark = Image.open(data_path + str(random_img) + ".png")
     watermark = watermark.convert("RGBA")
     w, h = watermark.size
@@ -225,7 +225,7 @@ def add_watermark_noise_test(img_train, occupancy=50, img_id=3, scale_img=1.5, s
 
     if self_surpervision:
         random_img = same_random
-    data_path = "watermark/translucence/"
+    data_path = "watermarks/"
     watermark = Image.open(data_path + str(random_img) + ".png")
     watermark = watermark.convert("RGBA")
     w, h = watermark.size
