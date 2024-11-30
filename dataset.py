@@ -43,7 +43,7 @@ def prepare_data(data_path, patch_size, stride, aug_times=1, mode='gray'):
         h5f = h5py.File(data_path + "/" + 'train.h5', 'w')
     elif mode == "color":
         # files = glob.glob(os.path.join(data_path, 'VOC', '*.jpg'))
-        files = glob.glob(os.path.join(data_path, 'SWCNN_train_data', '*.jpg'))
+        files = glob.glob(os.path.join(data_path, 'train', '*.jpg'))
         files.sort()
         h5f = h5py.File(data_path + "/" + 'SWCNN_train_color.h5', 'w')
 
@@ -85,7 +85,7 @@ def prepare_data(data_path, patch_size, stride, aug_times=1, mode='gray'):
         files.sort()
         h5f = h5py.File(data_path + "/" + 'val.h5', 'w')
     elif mode == 'color':
-        files = glob.glob(os.path.join(data_path, 'VOC_test', '*.jpg'))
+        files = glob.glob(os.path.join(data_path, 'validation', '*.jpg'))
         files.sort()
         h5f = h5py.File(data_path + "/" + 'val_color.h5', 'w')
     val_num = 0
