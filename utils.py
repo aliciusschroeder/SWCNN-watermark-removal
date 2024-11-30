@@ -134,7 +134,7 @@ def add_watermark_noise(img_train, occupancy=50, self_surpervision=False, same_r
             sum = (img_cnt > 0).sum()
             ratio = img_w * img_h * occupancy / 100
             if sum > ratio:
-                img_rgb = np.array(tmp).astype(np.float) / 255.
+                img_rgb = np.array(tmp).astype(float) / 255.
                 img_train[i] = img_rgb[:, :, [0, 1, 2]]
                 break
     img_train = np.transpose(img_train, (0, 3, 1, 2))
@@ -210,7 +210,7 @@ def add_watermark_noise_B(img_train, occupancy=50, self_surpervision=False, same
             sum = (img_cnt > 0).sum()
             ratio = img_w * img_h * occupancy / 100
             if sum > ratio:
-                img_rgb = np.array(tmp).astype(np.float) / 255.
+                img_rgb = np.array(tmp).astype(float) / 255.
                 img_train[i] = img_rgb[:, :, [0, 1, 2]]
                 break
     img_train = np.transpose(img_train, (0, 3, 1, 2))
@@ -287,7 +287,7 @@ def add_watermark_noise_test(img_train, occupancy=50, img_id=3, scale_img=1.5, s
             sum = (img_cnt > 0).sum()
             ratio = img_w * img_h * occupancy / 100
             if sum > ratio:
-                img_rgb = np.array(tmp).astype(np.float) / 255.
+                img_rgb = np.array(tmp).astype(float) / 255.
                 img_train[i] = img_rgb[:, :, [0, 1, 2]]
                 break
     img_train = np.transpose(img_train, (0, 3, 1, 2))
