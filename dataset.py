@@ -8,7 +8,7 @@ import cv2
 import glob
 import torch.utils.data as udata
 from utils import data_augmentation
-from PIL import Image
+# from PIL import Image
 
 
 def normalize(data):

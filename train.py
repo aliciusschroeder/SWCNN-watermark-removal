@@ -1,9 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# @Time    : 2021-12-7 16:54
-# @Author  : 26731
-# @File    : train_tri.py
-# @Software: PyCharm
 import os
 import argparse
 import torch.optim as optim
@@ -53,7 +48,6 @@ print()
 
 
 def main():
-    # Load dataset
     print('Loading dataset ...\n')
     dataset_train = Dataset(train=True, mode='color', data_path=config['train_data_path'])
     dataset_val = Dataset(train=False, mode='color', data_path=config['train_data_path'])
@@ -65,7 +59,7 @@ def main():
         net = HN()
     else:
         assert False
-    # TensorBoard was used to visually record the training results
+
     writer = SummaryWriter("runs/" + tensorboard_name)
 
     model_vgg = load_froze_vgg16()
@@ -78,10 +72,8 @@ def main():
     else:
         criterion = nn.L1Loss(size_average=False)
 
-    # Load the trained network and continue training
-    # model.load_state_dict(torch.load(os.path.join(opt.outf, 'net_water_UNet_sec1_per0313n.pth')))
     criterion.cuda()
-    # Optimizer
+
     optimizer = optim.Adam(model.parameters(), lr=opt.lr)
     step = 0
 
@@ -180,7 +172,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # data preprocess
     if opt.preprocess:
         prepare_data(data_path=config['train_data_path'], patch_size=256, stride=128, aug_times=1, mode='color')
     main()

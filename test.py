@@ -1,9 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# @Time    : 2021-12-7 20:23
-# @Author  : 26731
-# @File    : test_gswm.py
-# @Software: PyCharm
 import cv2
 import os
 import argparse
@@ -71,7 +66,7 @@ def water_test():
     model.load_state_dict(torch.load(os.path.join(opt.modeldir, model_name)))
     model.eval()
     print('Loading data info ...\n')
-    data_path = config['train_data_path']  # load test data'/media/npu/Data/jtc/data/'
+    data_path = config['train_data_path']
     files_source = glob.glob(os.path.join(data_path, opt.test_data, '*.jpg'))
     files_source.sort()
     # process data

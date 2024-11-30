@@ -1,11 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# @Time    : 2021-12-2 16:14
-# @Author  : 26731
-# @File    : addWatermark.py
-# @Software: PyCharm
-import cv2
-import matplotlib.pyplot as plt
+# import cv2
+# import matplotlib.pyplot as plt
 import torch
 from PIL import Image
 import numpy as np
@@ -62,17 +56,14 @@ def add_watermark_noise(noise, occupancy=50):
     img_for_cnt = Image.fromarray(img_for_cnt)
     w, h = watermark.size
     while True:
-        # 随机选取放缩比例和旋转角度
+        # Randomized selection of zoom ratio and rotation angle
         angle = random.randint(-45, 45)
         scale = random.random()
-        # scale = scale
-        # 旋转水印
         img = watermark.rotate(angle, expand=1)
-        #  放缩水印
         img = img.resize((int(w * scale), int(h * scale)))
-        # 将噪声转换为PIL
+        # Convert noise to PIL
 
-        # 随机选取要粘贴的部位
+        # Randomly select the paste-area
 
         x = random.randint(int(-w*scale), noise_h)
         y = random.randint(int(-h*scale), noise_w)
