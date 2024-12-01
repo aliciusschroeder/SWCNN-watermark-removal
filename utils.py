@@ -1,11 +1,7 @@
 import math
 import random
-#import string
 
-#import cv2
-import matplotlib.pyplot as plt
 import numpy as np
-#import torch
 import torch.nn as nn
 import torchvision.models as models
 import yaml
@@ -15,18 +11,6 @@ from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 from skimage.metrics import structural_similarity as compare_ssim
 
 from models import VGG16
-
-
-def weights_init_kaiming(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
-        nn.init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
-    elif classname.find('Linear') != -1:
-        nn.init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
-    elif classname.find('BatchNorm') != -1:
-        # nn.init.uniform(m.weight.data, 1.0, 0.02)
-        m.weight.data.normal_(mean=0, std=math.sqrt(2. / 9. / 64.)).clamp_(-0.025, 0.025)
-        nn.init.constant(m.bias.data, 0.0)
 
 
 def batch_PSNR(img, imclean, data_range):
@@ -52,258 +36,194 @@ def batch_SSIM(img, imclean, data_range):
 
 
 def batch_RMSE(img, imclean, data_range):
-    img = img * 255
-    imclean = imclean * 255
-    Img = img.data.cpu().numpy().astype(np.uint8)
+    img = (img * 255).data.cpu().numpy().astype(np.uint8)
+    imclean = (imclean * 255).data.cpu().numpy().astype(np.uint8)
+    RMSE = np.mean([
+        math.sqrt(compare_mse(imclean[i], img[i]))
+        for i in range(img.shape[0])
+    ])
+    return RMSE
 
-    Iclean = imclean.data.cpu().numpy().astype(np.uint8)
-    MSE = 0
-    for i in range(Img.shape[0]):
-        MSE += math.sqrt(compare_mse(Iclean[i, :, :, :], Img[i, :, :, :]))
-    return (MSE / Img.shape[0])
-
-
-def add_watermark_noise(img_train, occupancy=50, self_surpervision=False, same_random=0, alpha=0.3):
-    # 加载水印,水印应该是随机加入
-    # random_img = random.randint(1, 13)
-    # 对比实验的时候选取某个水印进行去除
-    random_img = 3  # "test"  # random.randint(1, 173)
-    # Noise2Noise要确保类标和输入的水印为同一张
-    if self_surpervision:
-        random_img = same_random
-    data_path = "watermarks/"
-    watermark = Image.open(data_path + str(random_img) + ".png")
-    watermark = watermark.convert("RGBA")
+def load_watermark(random_img, alpha, data_path="data/watermarks/"):
+    watermark = Image.open(f"{data_path}{random_img}.png").convert("RGBA")
     w, h = watermark.size
-    # 设置水印透明度
     for i in range(w):
         for k in range(h):
             color = watermark.getpixel((i, k))
             if color[3] != 0:
                 transparence = int(255 * alpha)
-                # color = color[::-1]
-
                 color = color[:-1] + (transparence,)
-            watermark.putpixel((i, k), color)
-    # watermark = watermark.convert("RGB")
-    watermark_np = np.array(watermark)
-    watermark_np = watermark_np[:, :, 0:3]
+                watermark.putpixel((i, k), color)
+    return watermark
+
+def apply_watermark(base_image, watermark, scale, position):
+    scaled_watermark = watermark.resize((int(watermark.width * scale), int(watermark.height * scale)))
+    layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
+    layer.paste(scaled_watermark, position, scaled_watermark)
+    return Image.alpha_composite(base_image, layer)
+
+def calculate_occupancy(img_cnt, occupancy_ratio):
+    sum_pixels = np.sum(img_cnt > 0)
+    total_pixels = img_cnt.size
+    return sum_pixels > total_pixels * occupancy_ratio / 100
+
+def add_watermark_noise_generic(
+    img_train,
+    occupancy=50,
+    self_supervision=False,
+    same_random=0,
+    alpha=0.3,
+    img_id=None,
+    scale_img=None,
+    fixed_position=None,
+    standalone=False
+):
+    if standalone:
+        # Standalone processing for single image
+        data_path = "water.png"
+        watermark = Image.open(data_path).convert("RGBA")
+        noise = img_train.numpy()
+        _, h, w = noise.shape
+        occupancy = np.random.uniform(0, occupancy)
+
+        noise = np.ascontiguousarray(np.transpose(noise, (1, 2, 0)))
+        noise = np.uint8(noise * 255)
+        noise_pil = Image.fromarray(noise)
+        img_for_cnt = Image.new("L", (w, h), 0)
+
+        while True:
+            angle = random.randint(-45, 45)
+            scale = random.uniform(0.5, 1.0)
+            rotated_watermark = watermark.rotate(angle, expand=1).resize(
+                (int(watermark.width * scale), int(watermark.height * scale))
+            )
+            x = random.randint(-rotated_watermark.width, w)
+            y = random.randint(-rotated_watermark.height, h)
+            noise_pil = apply_watermark(noise_pil, rotated_watermark, 1.0, (x, y))
+            img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), rotated_watermark, 1.0, (x, y)).convert("L")
+            img_cnt = np.array(img_for_cnt)
+            if calculate_occupancy(img_cnt, occupancy):
+                break
+        return noise_pil
+
+    # Batch processing
+    if img_id is not None:
+        random_img = img_id
+    else:
+        random_img = same_random if self_supervision else random.randint(1, 173)
+
+    # Handle alpha for different scenarios
+    if scale_img is not None:
+        alpha = alpha  # Fixed alpha
+    else:
+        alpha = alpha + random.randint(0, 70) * 0.01 if 'add_watermark_noise_B' in add_watermark_noise_generic.__name__ else alpha
+
+    watermark = load_watermark(random_img, alpha)
     img_train = img_train.numpy()
-    # img_train = Image.fromarray(img_train)
-    imgn_train = img_train
-    # data normalization
-    _, water_h, water_w = watermark_np.shape
+    _, _, img_h, img_w = img_train.shape
     occupancy = np.random.uniform(0, occupancy)
 
-    _, _, img_h, img_w = img_train.shape
-    # Load the array for calculating occupancy
-    img_for_cnt = np.zeros((img_h, img_w, 3), np.uint8)
-    # Conversion to PIL
-    img_for_cnt = Image.fromarray(img_for_cnt)
-    new_w, new_h = watermark.size
     img_train = np.ascontiguousarray(np.transpose(img_train, (0, 2, 3, 1)))
-    imgn_train = np.ascontiguousarray(np.transpose(imgn_train, (0, 2, 3, 1)))
 
     for i in range(len(img_train)):
-        tmp = Image.fromarray((img_train[i] * 255).astype(np.uint8))
-        tmp = tmp.convert("RGBA")
-        img_for_cnt = np.zeros((img_h, img_w, 3), np.uint8)
-        # Conversion to PIL
-        img_for_cnt = Image.fromarray(img_for_cnt)
+        tmp = Image.fromarray((img_train[i] * 255).astype(np.uint8)).convert("RGBA")
+        img_for_cnt = Image.new("L", (img_w, img_h), 0)
+
         while True:
-            # Randomized selection of zoom ratio and rotation angle
-            scale = np.random.uniform(0.5, 1.0)
+            # Determine scaling
+            scale = scale_img if scale_img is not None else np.random.uniform(0.5, 1.0)
+            scaled_watermark = watermark.resize((int(watermark.width * scale), int(watermark.height * scale)))
 
-            # angle = random.randint(-45, 45)
-            # img = watermark.rotate(angle, expand=1)
-            
-            water = watermark.resize((int(w * scale), int(h * scale)))
-            # Convert noise to PIL
-            layer = Image.new("RGBA", tmp.size, (0, 0, 0, 0))
-            # Randomly select the area to be pasted
-            x = random.randint(0, img_w - int(w * scale))  # int(-w * scale)
-            y = random.randint(0, img_h - int(h * scale))  # int(-h * scale)
-            # Merge watermark files
-            layer.paste(water, (x, y))
-            tmp = Image.composite(layer, tmp, layer)
+            # Determine position
+            if fixed_position is not None:
+                x, y = fixed_position
+            else:
+                x = random.randint(0, img_w - scaled_watermark.width)
+                y = random.randint(0, img_h - scaled_watermark.height)
 
-            img_for_cnt.paste(water, (x, y), water)
-            img_for_cnt = img_for_cnt.convert("L")
+            # Apply watermark
+            tmp = apply_watermark(tmp, scaled_watermark, 1.0, (x, y))
+            img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), scaled_watermark, 1.0, (x, y)).convert("L")
             img_cnt = np.array(img_for_cnt)
-            sum = (img_cnt > 0).sum()
-            ratio = img_w * img_h * occupancy / 100
-            if sum > ratio:
-                img_rgb = np.array(tmp).astype(float) / 255.
-                img_train[i] = img_rgb[:, :, [0, 1, 2]]
+
+            if calculate_occupancy(img_cnt, occupancy):
+                img_rgb = np.array(tmp).astype(float) / 255.0
+                img_train[i] = img_rgb[:, :, :3]
                 break
+
     img_train = np.transpose(img_train, (0, 3, 1, 2))
-    return img_train
+    return torch.tensor(img_train)
+
+def add_watermark_noise(
+    img_train, occupancy=50, self_supervision=False, same_random=0, alpha=0.3
+):
+    return add_watermark_noise_generic(
+        img_train=img_train,
+        occupancy=occupancy,
+        self_supervision=self_supervision,
+        same_random=same_random,
+        alpha=alpha
+    )
+
+def add_watermark_noise_B(
+    img_train, occupancy=50, self_supervision=False, same_random=0, alpha=0.3
+):
+    return add_watermark_noise_generic(
+        img_train=img_train,
+        occupancy=occupancy,
+        self_supervision=self_supervision,
+        same_random=same_random,
+        alpha=alpha,
+        # Additional parameters can be set here if needed
+    )
 
 
-def add_watermark_noise_B(img_train, occupancy=50, self_surpervision=False, same_random=0, alpha=0.3):
-    # Load watermark, watermark should be added randomly
-    # random_img = random.randint(1, 13)
-    # Comparison of experiments when a certain watermark is selected for removal
-    random_img = 3  # "test"  # random.randint(1, 173)
-    # Noise2Noise has to make sure that the class label and the input watermark are the same one
-    if self_surpervision:
-        random_img = same_random
-    data_path = "watermarks/"
-    watermark = Image.open(data_path + str(random_img) + ".png")
-    watermark = watermark.convert("RGBA")
-    w, h = watermark.size
-    # Setting watermark transparency
-    alpha = 0.3 + random.randint(0, 70) * 0.01
-    for i in range(w):
-        for k in range(h):
-            color = watermark.getpixel((i, k))
-            if color[3] != 0:
-                transparence = int(255 * alpha)
-                # color = color[::-1]
-                color = color[:-1] + (transparence,)
-            watermark.putpixel((i, k), color)
-    # watermark = watermark.convert("RGB")
-    watermark_np = np.array(watermark)
-    watermark_np = watermark_np[:, :, 0:3]
-    img_train = img_train.numpy()
-    # img_train = Image.fromarray(img_train)
-    imgn_train = img_train
-    # data normalization
-    _, water_h, water_w = watermark_np.shape
-    occupancy = np.random.uniform(0, occupancy)
+def add_watermark_noise_test(
+    img_train,
+    occupancy=50,
+    img_id=3,
+    scale_img=1.5,
+    self_supervision=False,
+    same_random=0,
+    alpha=0.3
+):
+    return add_watermark_noise_generic(
+        img_train=img_train,
+        occupancy=occupancy,
+        self_supervision=self_supervision,
+        same_random=same_random,
+        alpha=alpha,
+        img_id=img_id,
+        scale_img=scale_img,
+        fixed_position=(128, 128)
+    )
 
-    _, _, img_h, img_w = img_train.shape
-    # Load the array for calculating occupancy
-    img_for_cnt = np.zeros((img_h, img_w, 3), np.uint8)
-    # Conversion to PIL
-    img_for_cnt = Image.fromarray(img_for_cnt)
-    # new_w, new_h = watermark.size
-    img_train = np.ascontiguousarray(np.transpose(img_train, (0, 2, 3, 1)))
-    imgn_train = np.ascontiguousarray(np.transpose(imgn_train, (0, 2, 3, 1)))
-
-    for i in range(len(img_train)):
-        tmp = Image.fromarray((img_train[i] * 255).astype(np.uint8))
-        tmp = tmp.convert("RGBA")
-        img_for_cnt = np.zeros((img_h, img_w, 3), np.uint8)
-        # Conversion to PIL
-        img_for_cnt = Image.fromarray(img_for_cnt)
-        while True:
-            # Randomized selection of zoom ratio and rotation angle
-            # angle = random.randint(-45, 45)
-            # img = watermark.rotate(angle, expand=1)
-
-            scale = np.random.uniform(0.5, 1.0)
-            water = watermark.resize((int(w * scale), int(h * scale)))
-            # Convert noise to PIL
-            layer = Image.new("RGBA", tmp.size, (0, 0, 0, 0))
-            # Randomly select the area to be pasted
-            x = random.randint(0, img_w - int(w * scale))  # int(-w * scale)
-            y = random.randint(0, img_h - int(h * scale))  # int(-h * scale)
-            # Merge watermark files
-            layer.paste(water, (x, y))
-            tmp = Image.composite(layer, tmp, layer)
-
-            img_for_cnt.paste(water, (x, y), water)
-            img_for_cnt = img_for_cnt.convert("L")
-            img_cnt = np.array(img_for_cnt)
-            sum = (img_cnt > 0).sum()
-            ratio = img_w * img_h * occupancy / 100
-            if sum > ratio:
-                img_rgb = np.array(tmp).astype(float) / 255.
-                img_train[i] = img_rgb[:, :, [0, 1, 2]]
-                break
-    img_train = np.transpose(img_train, (0, 3, 1, 2))
-    return img_train
-
-
-#  This function is only used for testing
-def add_watermark_noise_test(img_train, occupancy=50, img_id=3, scale_img=1.5, self_surpervision=False,
-                                same_random=0, alpha=0.3):
-
-    random_img = img_id  # "test"  # random.randint(1, 173)
-
-    if self_surpervision:
-        random_img = same_random
-    data_path = "watermarks/"
-    watermark = Image.open(data_path + str(random_img) + ".png")
-    watermark = watermark.convert("RGBA")
-    w, h = watermark.size
-    # Setting watermark transparency
-    for i in range(w):
-        for k in range(h):
-            color = watermark.getpixel((i, k))
-            if color[3] != 0:
-                transparence = int(255 * alpha)  # random.randint(100)
-                # color = color[::-1]
-                color = color[:-1] + (transparence,)
-            watermark.putpixel((i, k), color)
-    # watermark = watermark.convert("RGB")
-    watermark_np = np.array(watermark)
-    watermark_np = watermark_np[:, :, 0:3]
-    img_train = img_train.numpy()
-    # img_train = Image.fromarray(img_train)
-    imgn_train = img_train
-    # data normalization
-    _, water_h, water_w = watermark_np.shape
-    occupancy = np.random.uniform(0, occupancy)
-
-    _, _, img_h, img_w = img_train.shape
-    # Load the array for calculating occupancy
-    img_for_cnt = np.zeros((img_h, img_w, 3), np.uint8)
-    # Conversion to PIL
-    img_for_cnt = Image.fromarray(img_for_cnt)
-    # new_w, new_h = watermark.size
-    img_train = np.ascontiguousarray(np.transpose(img_train, (0, 2, 3, 1)))
-    imgn_train = np.ascontiguousarray(np.transpose(imgn_train, (0, 2, 3, 1)))
-
-    for i in range(len(img_train)):
-        tmp = Image.fromarray((img_train[i] * 255).astype(np.uint8))
-        tmp = tmp.convert("RGBA")
-        img_for_cnt = np.zeros((img_h, img_w, 3), np.uint8)
-        # Conversion to PIL
-        img_for_cnt = Image.fromarray(img_for_cnt)
-        while True:
-            scale = np.random.uniform(0.5, 1.0)
-            # angle = random.randint(-45, 45)
-            # img = watermark.rotate(angle, expand=1)
-
-            scale = scale_img
-            water = watermark.resize((int(w * scale), int(h * scale)))
-            # Convert noise to PIL
-            layer = Image.new("RGBA", tmp.size, (0, 0, 0, 0))
-            # Randomly select the area to be pasted
-            # x = random.randint(0, img_w - int(w * scale))  # int(-w * scale)
-            # y = random.randint(0, img_h - int(h * scale))  # int(-h * scale)
-            x = 128
-            y = 128
-            # Merge watermark files
-            layer.paste(water, (x, y))
-            tmp = Image.composite(layer, tmp, layer)
-
-            img_for_cnt.paste(water, (x, y), water)
-            img_for_cnt = img_for_cnt.convert("L")
-            img_cnt = np.array(img_for_cnt)
-            sum = (img_cnt > 0).sum()
-            ratio = img_w * img_h * occupancy / 100
-            if sum > ratio:
-                img_rgb = np.array(tmp).astype(float) / 255.
-                img_train[i] = img_rgb[:, :, [0, 1, 2]]
-                break
-    img_train = np.transpose(img_train, (0, 3, 1, 2))
-    return img_train
+# This function is only used for testing
+def add_watermark_noise_test(img_train, occupancy=50, img_id=3, scale_img=1.5, self_supervision=False,
+                            same_random=0, alpha=0.3):
+    return add_watermark_noise_generic(
+        img_train=img_train,
+        occupancy=occupancy,
+        img_id=img_id,
+        scale_img=scale_img,
+        self_supervision=self_supervision,
+        same_random=same_random,
+        alpha=alpha,
+        fixed_position=(128, 128)
+    )
 
 
 def load_froze_vgg16():
-    # finetunning
+    # Fine-tuning
     model_pretrain_vgg = models.vgg16(pretrained=True)
 
-    # load VGG16
+    # Load VGG16
     net_vgg = VGG16()
     model_dict = net_vgg.state_dict()
     pretrained_dict = model_pretrain_vgg.state_dict()
     pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
 
-    # load parameters
+    # Load Parameters
     net_vgg.load_state_dict(pretrained_dict)
 
     for child in net_vgg.children():

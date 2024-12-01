@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from PIL import Image
 
+from utils import add_watermark_noise_generic
+
 # import cv2
 # import matplotlib.pyplot as plt
 
@@ -40,49 +42,11 @@ from PIL import Image
 #     image.paste(watermark, (random_X, random_Y), mask=paste_mask)
 
 def add_watermark_noise(noise, occupancy=50):
-    watermark = Image.open("water.png")
-    noise = noise.numpy()
-
-    _, h, w = noise.shape
-    img_for_cnt = np.zeros((h, w), np.uint8)
-    occupancy = np.random.uniform(0, occupancy)
-
-    # 获取噪声的shape
-    noise = np.ascontiguousarray(np.transpose(noise, (1, 2, 0)))
-    noise_h, noise_w, noise_c = noise.shape
-    noise = np.uint8(noise*255)
-    # plt.imshow(noise)
-    # plt.show()
-    img_for_cnt = np.zeros((noise_h, noise_w), np.uint8)
-    noise = Image.fromarray(noise)
-    img_for_cnt = Image.fromarray(img_for_cnt)
-    w, h = watermark.size
-    while True:
-        # Randomized selection of zoom ratio and rotation angle
-        angle = random.randint(-45, 45)
-        scale = random.random()
-        img = watermark.rotate(angle, expand=1)
-        img = img.resize((int(w * scale), int(h * scale)))
-        # Convert noise to PIL
-
-        # Randomly select the paste-area
-
-        x = random.randint(int(-w*scale), noise_h)
-        y = random.randint(int(-h*scale), noise_w)
-        noise.paste(img, (x, y), img)
-        # plt.imshow(noise)
-        # plt.show()
-
-        img_for_cnt.paste(img, (x, y), img)
-        # plt.imshow(img_for_cnt, cmap='gray')
-        # plt.show()
-        img_cnt = np.array(img_for_cnt)
-        sum = (img_cnt > 0).sum()
-        ratio = noise_h * noise_w * occupancy / 100
-        if sum > noise_h * noise_w * occupancy / 100:
-            # noise = torch.FloatTensor(noise)
-            break
-    return noise
+    return add_watermark_noise_generic(
+        img_train=noise,
+        occupancy=occupancy,
+        standalone=True
+    )
 
 
 if __name__ == '__main__':
@@ -90,5 +54,4 @@ if __name__ == '__main__':
     max_noise = torch.max(noise)
     min_noise = torch.min(noise)
     noise = (noise - min_noise)/(max_noise-min_noise)
-    # noise = torch.zeros((128, 3, 200, 200))
     add_watermark_noise(noise[0])
