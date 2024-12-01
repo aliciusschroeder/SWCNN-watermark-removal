@@ -11,6 +11,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
+from torch import device as torchdevice
+from torch.cuda import is_available as cuda_is_available
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import Dataset, prepare_data
@@ -27,9 +29,8 @@ from models import (
 )
 from utils import *
 
-# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+device = torchdevice("cuda" if cuda_is_available() else "cpu")
 
-# torch.cuda.set_device(0)
 parser = argparse.ArgumentParser(description="SWCNN")
 config = get_config('configs/config.yaml')
 parser.add_argument("--preprocess", type=bool, default=False, help='run prepare_data or not')
@@ -110,7 +111,7 @@ def main():
     # 这个网络提取特征图，计算感知损失
     model_vgg = load_froze_vgg16()
     device_ids = [0]
-    model = nn.DataParallel(net, device_ids=device_ids).cuda()
+    model = nn.DataParallel(net, device_ids=device_ids).to(device)
 
     # load loss function
     if opt.loss == "L2":
@@ -124,7 +125,7 @@ def main():
 
     # Load the trained network and continue training
     # model.load_state_dict(torch.load(os.path.join(opt.outf, "sec2_n2n_per_IRCNN_noise0.pth")))
-    criterion.cuda()
+    criterion.to(device)
     # Optimizer
     optimizer = optim.Adam(model.parameters(), lr=opt.lr)
     step = 0
@@ -177,14 +178,14 @@ def main():
             else:
                 imgn_train = torch.Tensor(imgn_train) + noise_gauss
             imgn_train_2 = torch.Tensor(imgn_train_2)
-            img_train, imgn_train = Variable(img_train.cuda()), Variable(imgn_train.cuda())
-            imgn_train_mid = Variable(imgn_train_mid.cuda())
-            imgn_train_2 = Variable(imgn_train_2.cuda())
+            img_train, imgn_train = Variable(img_train.to(device)), Variable(imgn_train.to(device))
+            imgn_train_mid = Variable(imgn_train_mid.to(device))
+            imgn_train_2 = Variable(imgn_train_2.to(device))
             if opt.net == "FFDNet":
                 noise_sigma = opt.noiseL / 255.
                 noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(img_train.shape[0])]))
                 noise_sigma = Variable(noise_sigma)
-                noise_sigma = noise_sigma.cuda()
+                noise_sigma = noise_sigma.to(device)
                 out_train = model(imgn_train, noise_sigma)
             elif opt.net == "SUNet":
                 out_dn, out_train = model(imgn_train)
@@ -256,12 +257,12 @@ def main():
                     imgn_val = torch.Tensor(imgn_val)
                 else:
                     imgn_val = torch.Tensor(imgn_val) + noise_gauss
-                img_val, imgn_val = Variable(img_val.cuda(), volatile=True), Variable(imgn_val.cuda(), volatile=True)
+                img_val, imgn_val = Variable(img_val.to(device), volatile=True), Variable(imgn_val.to(device), volatile=True)
                 if opt.net == "FFDNet":
                     noise_sigma = opt.noiseL / 255.
                     noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(img_val.shape[0])]))
                     noise_sigma = Variable(noise_sigma)
-                    noise_sigma = noise_sigma.cuda()
+                    noise_sigma = noise_sigma.to(device)
                     out_val = torch.clamp(model(imgn_val, noise_sigma), 0., 1.)
                 elif opt.net == "SUNet":
                     out_val = torch.clamp(model(imgn_val)[1], 0., 1.)

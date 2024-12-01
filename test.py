@@ -7,11 +7,14 @@ import matplotlib.image as matImage
 import matplotlib.pyplot as plt
 
 from torch.autograd import Variable
+from torch import device as torchdevice
+from torch.cuda import is_available as cuda_is_available
 
 from models import HN
 from utils import *
 
-# os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+device = torchdevice("cuda" if cuda_is_available() else "cpu")
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import os
 
@@ -63,7 +66,7 @@ def water_test():
     else:
         assert False
     device_ids = [0]
-    model = nn.DataParallel(net, device_ids=device_ids).cuda()
+    model = nn.DataParallel(net, device_ids=device_ids).to(device)
     # load model
     model.load_state_dict(torch.load(os.path.join(opt.modeldir, model_name)))
     model.eval()
@@ -106,13 +109,13 @@ def water_test():
             # add watermark
             INoisy = add_watermark_noise_test(ISource, 0., img_id=img_index, scale_img=1.5, alpha=opt.alpha)
             INoisy = torch.Tensor(INoisy)  # + noise_gs
-            ISource, INoisy = Variable(ISource.cuda()), Variable(INoisy.cuda())
+            ISource, INoisy = Variable(ISource.to(device)), Variable(INoisy.to(device))
             with torch.no_grad():  # this can save much memory
                 if opt.net == "FFDNet":
                     noise_sigma = 0 / 255.
                     noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(INoisy.shape[0])]))
                     noise_sigma = Variable(noise_sigma)
-                    noise_sigma = noise_sigma.cuda()
+                    noise_sigma = noise_sigma.to(device)
                     Out = torch.clamp(model(INoisy, noise_sigma), 0., 1.)
                 else:
                     Out = torch.clamp(model(INoisy), 0., 1.)

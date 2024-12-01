@@ -105,7 +105,8 @@ class BilateralFilter(nn.Module):
         self.pad = (ksize - 1) // 2
         self.ksize = ksize
         # get the spatial gaussian weight
-        self.weight_space = GaussianFilter(ksize=self.ksize, sigma=self.sigma_space).gaussian_weight.cuda()
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.weight_space = GaussianFilter(ksize=self.ksize, sigma=self.sigma_space).gaussian_weight.to(device)
 
     def forward(self, x):
         # Extracts sliding local patches from a batched input tensor.

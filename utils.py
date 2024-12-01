@@ -4,6 +4,10 @@ import random
 import numpy as np
 import torch.nn as nn
 import torchvision.models as models
+from torch import device as torchdevice
+from torch.cuda import is_available as cuda_is_available
+import torch
+
 import yaml
 from PIL import Image
 from skimage.metrics import mean_squared_error as compare_mse
@@ -231,7 +235,8 @@ def load_froze_vgg16():
             p.requires_grad = False
     device_ids = [0]
 
-    model_vgg = nn.DataParallel(net_vgg, device_ids=device_ids).cuda()
+    device = torchdevice('cuda' if cuda_is_available() else 'cpu')
+    model_vgg = nn.DataParallel(net_vgg, device_ids=device_ids).to(device)
     return model_vgg
 
 
