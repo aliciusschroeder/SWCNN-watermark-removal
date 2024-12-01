@@ -10,7 +10,6 @@ import torch.nn as nn
 import torchvision.models as models
 import yaml
 from PIL import Image
-from skimage.measure.simple_metrics import compare_psnr
 from skimage.metrics import mean_squared_error as compare_mse
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 from skimage.metrics import structural_similarity as compare_ssim
