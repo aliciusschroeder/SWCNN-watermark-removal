@@ -48,7 +48,8 @@ def input_files(data_path: str, step: StepType, mode: ModeType = DEFAULT_MODE) -
     folder = 'train' if step == 'train' else 'validation'
     extension = 'png' if mode == 'gray' else 'jpg'
     file_path = os.path.join(data_path, folder, f'*.{extension}')
-    files = glob.glob(file_path).sort()
+    files = glob.glob(file_path)
+    files.sort()
     h5f_filepath = h5_filepath(data_path, step, mode)
     return file_path, files, h5f_filepath
 
@@ -128,7 +129,7 @@ class Dataset(udata.Dataset):
     train: bool
     mode: ModeType
     data_path: str
-    
+
     def __init__(self, train : bool = True, mode : ModeType = DEFAULT_MODE, data_path : str = './'):
         super(Dataset, self).__init__()
         self.train = train
