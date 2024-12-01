@@ -4,6 +4,7 @@ import random
 import numpy as np
 import torch.nn as nn
 import torchvision.models as models
+from torchvision.models import VGG16_Weights
 from torch import device as torchdevice
 from torch.cuda import is_available as cuda_is_available
 import torch
@@ -219,7 +220,7 @@ def add_watermark_noise_test(img_train, occupancy=50, img_id=3, scale_img=1.5, s
 
 def load_froze_vgg16():
     # Fine-tuning
-    model_pretrain_vgg = models.vgg16(pretrained=True)
+    model_pretrain_vgg = models.vgg16(weights=VGG16_Weights.DEFAULT)
 
     # Load VGG16
     net_vgg = VGG16()

@@ -115,12 +115,12 @@ def main():
 
     # load loss function
     if opt.loss == "L2":
-        criterion = nn.MSELoss(size_average=False)
+        criterion = nn.MSELoss(reduction='sum')
     else:
-        criterion = nn.L1Loss(size_average=False)
+        criterion = nn.L1Loss(reduction='sum')
 
-    # criterion = nn.L1Loss(size_average=False)
-    # criterion_MSE = nn.MSELoss(size_average=False)
+    # criterion = nn.L1Loss(reduction='sum')
+    # criterion_MSE = nn.MSELoss(reduction='sum')
     # Move to GPU
 
     # Load the trained network and continue training

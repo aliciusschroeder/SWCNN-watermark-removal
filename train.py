@@ -74,9 +74,9 @@ def main():
 
     # load loss function
     if opt.loss == "L2":
-        criterion = nn.MSELoss(size_average=False)
+        criterion = nn.MSELoss(reduction='sum')
     else:
-        criterion = nn.L1Loss(size_average=False)
+        criterion = nn.L1Loss(reduction='sum')
 
     criterion.to(device)
 
