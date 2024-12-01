@@ -37,21 +37,40 @@ def Im2Patch(img, win, stride=1):
             k = k + 1
     return Y.reshape([endc, win, win, TotalPatNum])
 
+def h5_filepath(data_path: str, step: StepType, mode: ModeType = DEFAULT_MODE) -> str:
+    h5f_filename = 'train' if step == 'train' else 'val'
+    h5f_filename += '_color' if mode == 'color' else ''
+    h5f_filename += '.h5'
+    h5f_filepath = f"{data_path}/{h5f_filename}"
+    return h5f_filepath
 
-def prepare_data(data_path, patch_size, stride, aug_times=1, mode='gray'):
+def input_files(data_path: str, step: StepType, mode: ModeType = DEFAULT_MODE) -> tuple[str, List[str], str]:
+    folder = 'train' if step == 'train' else 'validation'
+    extension = 'png' if mode == 'gray' else 'jpg'
+    file_path = os.path.join(data_path, folder, f'*.{extension}')
+    files = glob.glob(file_path).sort()
+    h5f_filepath = h5_filepath(data_path, step, mode)
+    return file_path, files, h5f_filepath
+
+def prepare_data(data_path, patch_size, stride, aug_times=1, mode=DEFAULT_MODE):
+    print('Begin to prepare data')
+    print(f"Creating patches of size {patch_size} with stride {stride} and {aug_times - 1} additional augmentation times")
+    print(f"Will repeat that process for the following scales: {SCALES}")
+    train_files_path, train_files, train_h5f_path = input_files(data_path, 'train', mode)
+    val_files_path, val_files, val_h5f_path = input_files(data_path, 'validation', mode)
+    print(f"Collecting training files in: {train_files_path}")
+    print(f"Collecting validation files in: {val_files_path}")
+    if min(len(train_files), len(val_files)) < 0:
+        print(f"Error: Found only {len(train_files)} training files and {len(val_files)} validation files")
+        return
+    else:
+        print(f"Found {len(train_files)} training files")
+        print(f"Found {len(val_files)} validation files")
+
     # train
     print('process training data')
-    scales = [1, 0.9, 0.8, 0.7]
-
-    if mode == 'gray':
-        files = glob.glob(os.path.join(data_path, 'train', '*.png'))
-        files.sort()
-        h5f = h5py.File(data_path + "/" + 'train.h5', 'w')
-    elif mode == "color":
-        # files = glob.glob(os.path.join(data_path, 'VOC', '*.jpg'))
-        files = glob.glob(os.path.join(data_path, 'train', '*.jpg'))
-        files.sort()
-        h5f = h5py.File(data_path + "/" + 'SWCNN_train_color.h5', 'w')
+    files = train_files
+    h5f = h5py.File(train_h5f_path, 'w')
 
     train_num = 0
     for i in range(len(files)):
@@ -61,19 +80,17 @@ def prepare_data(data_path, patch_size, stride, aug_times=1, mode='gray'):
 
         h, w, c = img.shape
         # c = 3
-        for k in range(len(scales)):
-            if mode == 'color':
-                if int(h * scales[k]) < 256 or int(w * scales[k]) < 256:
-                    continue
-            Img = cv2.resize(img, (int(w * scales[k]), int(h * scales[k])), interpolation=cv2.INTER_CUBIC)
-            # Img = img.resize( (int(h * scales[k]), int(w * scales[k])))
+        for k in range(len(SCALES)):
+            if mode == 'color' and min(int(h * SCALES[k]), int(w * SCALES[k])) < 256:
+                continue
+            Img = cv2.resize(img, (int(w * SCALES[k]), int(h * SCALES[k])), interpolation=cv2.INTER_CUBIC)
             if mode =='gray':
                 Img = np.expand_dims(Img[:, :, 0].copy(), 0)
             else:
                 Img = np.transpose(Img, (2, 0, 1))
             Img = np.float32(normalize(Img))
             patches = Im2Patch(Img, win=patch_size, stride=stride)
-            print("file: %s scale %.1f # samples: %d" % (files[i], scales[k], patches.shape[3] * aug_times))
+            print("file: %s scale %.1f # samples: %d" % (files[i], SCALES[k], patches.shape[3] * aug_times))
             for n in range(patches.shape[3]):
                 data = patches[:, :, :, n].copy()
                 h5f.create_dataset(str(train_num), data=data)
@@ -86,14 +103,8 @@ def prepare_data(data_path, patch_size, stride, aug_times=1, mode='gray'):
     # val
     print('\nprocess validation data')
     files.clear()
-    if mode == 'gray':
-        files = glob.glob(os.path.join(data_path, 'Set12', '*.png'))
-        files.sort()
-        h5f = h5py.File(data_path + "/" + 'val.h5', 'w')
-    elif mode == 'color':
-        files = glob.glob(os.path.join(data_path, 'validation', '*.jpg'))
-        files.sort()
-        h5f = h5py.File(data_path + "/" + 'val_color.h5', 'w')
+    files = val_files
+    h5f = h5py.File(val_h5f_path, 'w')
     val_num = 0
     for i in range(len(files)):
         print("file: %s" % files[i])
@@ -123,27 +134,20 @@ class Dataset(udata.Dataset):
         self.train = train
         self.mode = mode
         self.data_path = data_path
-        if mode == 'gray':
-            if self.train:
-                h5f = h5py.File(self.data_path + "/" + 'train.h5', 'r')
-            else:
-                h5f = h5py.File(self.data_path + "/" + 'val.h5', 'r')
-            self.keys = list(h5f.keys())
-            random.shuffle(self.keys)
-            h5f.close()
-        elif mode == 'color':
-            if self.train:
-                h5f = h5py.File(self.data_path + "/" + 'train_color.h5', 'r')
-            else:
-                h5f = h5py.File(self.data_path + "/" + 'val_color.h5', 'r')
-            self.keys = list(h5f.keys())
-            random.shuffle(self.keys)
-            h5f.close()
+        step : StepType = 'train' if train else 'validation'
+        h5f_path = h5_filepath(data_path, step, mode)
+        h5f = h5py.File(h5f_path, 'r')
+        self.keys : List[str] = list(h5f.keys())
+        random.shuffle(self.keys)
+        h5f.close()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.keys)
 
     def __getitem__(self, index : int) -> torch.Tensor:
+        step : StepType = 'train' if self.train else 'validation'
+        h5f_path = h5_filepath(self.data_path, step, self.mode)
+        h5f = h5py.File(h5f_path, 'r')
         key = self.keys[index]
         data = np.array(h5f[key])
         h5f.close()
