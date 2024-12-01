@@ -11,6 +11,11 @@ venv.bak/
 runs/
 tmp/
 
+# Training Data
+data/train/*.[jp][pn]g
+data/validation/*.[jp][pn]g
+data/watermarks/*.png
+data/*.h5
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
