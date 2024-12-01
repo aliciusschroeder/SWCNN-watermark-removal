@@ -109,12 +109,12 @@ def main():
 
             imgn_train = torch.Tensor(imgn_train)
             imgn_train_2 = torch.Tensor(imgn_train_2)
-            img_train, imgn_train = Variable(img_train.to(device)), Variable(imgn_train.to(device))
-            imgn_train_2 = Variable(imgn_train_2.to(device))
+            img_train, imgn_train = img_train.to(device), imgn_train.to(device)
+            imgn_train_2 = imgn_train_2.to(device)
             if opt.net == "FFDNet":
                 noise_sigma = 0 / 255.
                 noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(img_train.shape[0])]))
-                noise_sigma = Variable(noise_sigma)
+                noise_sigma = Variable(noise_sigma) # TODO: check if it needs to track gradients, ensure requires_grad=True is set on the tensor before removing Variable()
                 noise_sigma = noise_sigma.to(device)
                 out_train = model(imgn_train, noise_sigma)
             else:

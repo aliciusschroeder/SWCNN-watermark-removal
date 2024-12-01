@@ -178,9 +178,9 @@ def main():
             else:
                 imgn_train = torch.Tensor(imgn_train) + noise_gauss
             imgn_train_2 = torch.Tensor(imgn_train_2)
-            img_train, imgn_train = Variable(img_train.to(device)), Variable(imgn_train.to(device))
+            img_train, imgn_train = img_train.to(device), imgn_train.to(device)
             imgn_train_mid = Variable(imgn_train_mid.to(device))
-            imgn_train_2 = Variable(imgn_train_2.to(device))
+            imgn_train_2 = imgn_train_2.to(device)
             if opt.net == "FFDNet":
                 noise_sigma = opt.noiseL / 255.
                 noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(img_train.shape[0])]))

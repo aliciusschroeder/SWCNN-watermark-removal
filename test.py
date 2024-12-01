@@ -109,7 +109,7 @@ def water_test():
             # add watermark
             INoisy = add_watermark_noise_test(ISource, 0., img_id=img_index, scale_img=1.5, alpha=opt.alpha)
             INoisy = torch.Tensor(INoisy)  # + noise_gs
-            ISource, INoisy = Variable(ISource.to(device)), Variable(INoisy.to(device))
+            ISource, INoisy = ISource.to(device), INoisy.to(device)
             with torch.no_grad():  # this can save much memory
                 if opt.net == "FFDNet":
                     noise_sigma = 0 / 255.
