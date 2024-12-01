@@ -29,7 +29,7 @@ parser.add_argument("--net", type=str, default="HN", help='Network used in train
 parser.add_argument("--loss", type=str, default="L1", help='The loss function used for training')
 parser.add_argument("--self_supervised", type=str, default="True", help='T stands for TRUE and F stands for FALSE')
 parser.add_argument("--PN", type=str, default="True", help='Whether to use perception network')
-parser.add_argument("--GPU_id", type=str, default="2", help='GPU_id')
+parser.add_argument("--GPU_id", type=str, default="0", help='GPU_id')
 opt = parser.parse_args()
 
 device = torchdevice("cuda" if cuda_is_available() else "cpu")

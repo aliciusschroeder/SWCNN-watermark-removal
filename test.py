@@ -15,7 +15,7 @@ from utils import *
 
 device = torchdevice("cuda" if cuda_is_available() else "cpu")
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"

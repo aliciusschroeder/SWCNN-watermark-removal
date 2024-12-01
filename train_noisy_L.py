@@ -51,7 +51,7 @@ parser.add_argument("--self_supervised", type=str, default="True", help='T stand
 parser.add_argument("--PN", type=bool, default="True", help='Whether to use perception network')
 parser.add_argument("--noiseL", type=float, default=25, help='noise level; ignored when mode=B')
 parser.add_argument("--val_noiseL", type=float, default=25, help='noise level used on validation set')
-parser.add_argument("--GPU_id", type=str, default="2", help='GPU_id')
+parser.add_argument("--GPU_id", type=str, default="0", help='GPU_id')
 opt = parser.parse_args()
 
 os.environ["CUDA_VISIBLE_DEVICES"] = opt.GPU_id

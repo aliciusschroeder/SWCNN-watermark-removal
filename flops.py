@@ -14,7 +14,7 @@ from models import DRDNet
 
 device = torchdevice("cuda" if cuda_is_available() else "cpu")
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 noise_sigma = 0
 
 noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(1)]))
