@@ -257,7 +257,8 @@ def main():
                     imgn_val = torch.Tensor(imgn_val)
                 else:
                     imgn_val = torch.Tensor(imgn_val) + noise_gauss
-                img_val, imgn_val = Variable(img_val.to(device), volatile=True), Variable(imgn_val.to(device), volatile=True)
+                with torch.no_grad():
+                    img_val, imgn_val = img_val.to(device), imgn_val.to(device)
                 if opt.net == "FFDNet":
                     noise_sigma = opt.noiseL / 255.
                     noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(img_val.shape[0])]))
