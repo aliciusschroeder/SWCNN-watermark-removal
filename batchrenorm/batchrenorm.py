@@ -1,6 +1,5 @@
 import torch
 
-
 __all__ = ["BatchRenorm1d", "BatchRenorm2d", "BatchRenorm3d"]
 
 

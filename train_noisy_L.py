@@ -1,22 +1,31 @@
-#!/usr/bin/env python
-import os
 import argparse
-# import string
+import os
 import random
-# import cv2
+# import string
+
+import matplotlib.pyplot as plt
 import numpy as np
+# import cv2
 import torch
 import torch.nn as nn
 import torch.optim as optim
-# import torchvision.utils as utils
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from models import HN, DnCNN, IRCNN, DPAUNet, DPUNet, SUNet, FFDNet, HN, DnCNN_RL, \
-    HN2
-from dataset import prepare_data, Dataset
-from utils import *
-import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
+
+from dataset import Dataset, prepare_data
+from models import (
+    DPAUNet,
+    DPUNet,
+    DnCNN,
+    DnCNN_RL,
+    FFDNet,
+    HN,
+    HN2,
+    IRCNN,
+    SUNet,
+)
+from utils import *
 
 # os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 

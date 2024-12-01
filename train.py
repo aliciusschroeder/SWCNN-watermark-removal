@@ -1,13 +1,14 @@
-#!/usr/bin/env python
-import os
 import argparse
+import os
+
 import torch.optim as optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from models import HN
-from dataset import prepare_data, Dataset
-from utils import *
 from torch.utils.tensorboard import SummaryWriter
+
+from dataset import Dataset, prepare_data
+from models import HN
+from utils import *
 
 parser = argparse.ArgumentParser(description="SWCNN")
 config = get_config('configs/config.yaml')

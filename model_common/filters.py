@@ -1,10 +1,11 @@
+# import os
+
+# import cv2
+import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torchvision.transforms import ToTensor, ToPILImage
-import numpy as np
-import os
-import cv2
+from torchvision.transforms import ToPILImage, ToTensor
 from PIL import Image
 
 

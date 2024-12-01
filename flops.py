@@ -1,13 +1,15 @@
+import os
+
+import numpy as np
 import torch
 import thop
 from thop import profile
-
-# from models import UNet, FFDNet, DnCNN, IRCNN, UNet_Atten_4, FastDerainNet, DRDNet, EAFN
-# from models import FFDNet, DnCNN, IRCNN, HN, FastDerainNet, DRDNet, EAFN
-from models import DRDNet
 from torch.autograd import Variable
-import numpy as np
-import os
+
+# from models import FFDNet, DnCNN, IRCNN, HN, FastDerainNet, DRDNet, EAFN
+# from models import UNet, FFDNet, DnCNN, IRCNN, UNet_Atten_4, FastDerainNet, DRDNet, EAFN
+from models import DRDNet
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 noise_sigma = 0
 

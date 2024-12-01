@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from batchrenorm import BatchRenorm2d
+import basicblock as B
 
 class DnCNN(nn.Module):
     def __init__(self, channels, num_of_layers=17):
@@ -163,9 +165,6 @@ class HN(nn.Module):
         return self._block6(concat1)  # 3
 
 
-from batchrenorm import BatchRenorm2d
-
-
 class UpNet(nn.Module):
 
     def __init__(self):
@@ -214,9 +213,6 @@ class DownNet(nn.Module):
     def forward(self, x):
         out = self.net(x)
         return out
-
-
-import basicblock as B
 
 
 class UNetRes(nn.Module):
