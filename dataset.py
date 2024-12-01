@@ -1,5 +1,6 @@
 import os
 import os.path
+from typing import List, Literal
 import numpy as np
 import random
 import h5py
@@ -10,6 +11,11 @@ import torch.utils.data as udata
 from utils import data_augmentation
 # from PIL import Image
 
+StepType = Literal['train', 'validation']
+ModeType = Literal['gray', 'color']
+
+SCALES = [1, 0.9, 0.8, 0.7]
+DEFAULT_MODE : ModeType = 'color'
 
 def normalize(data):
     return data / 255.
@@ -107,7 +113,12 @@ def prepare_data(data_path, patch_size, stride, aug_times=1, mode='gray'):
 
 
 class Dataset(udata.Dataset):
-    def __init__(self, train=True, mode='gray', data_path='/media/npu/Data/jtc/data/'):
+    keys: List[str]
+    train: bool
+    mode: ModeType
+    data_path: str
+    
+    def __init__(self, train : bool = True, mode : ModeType = DEFAULT_MODE, data_path : str = './'):
         super(Dataset, self).__init__()
         self.train = train
         self.mode = mode
@@ -132,17 +143,7 @@ class Dataset(udata.Dataset):
     def __len__(self):
         return len(self.keys)
 
-    def __getitem__(self, index):
-        if self.mode == 'color':
-            if self.train:
-                h5f = h5py.File(self.data_path + "/" + 'train_color.h5', 'r')
-            else:
-                h5f = h5py.File(self.data_path + "/" + 'val_color.h5', 'r')
-        else:
-            if self.train:
-                h5f = h5py.File(self.data_path + "/" + 'train.h5', 'r')
-            else:
-                h5f = h5py.File(self.data_path + "/" + 'val.h5', 'r')
+    def __getitem__(self, index : int) -> torch.Tensor:
         key = self.keys[index]
         data = np.array(h5f[key])
         h5f.close()
