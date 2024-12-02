@@ -203,20 +203,6 @@ def add_watermark_noise_test(
         fixed_position=(128, 128)
     )
 
-# This function is only used for testing
-def add_watermark_noise_test(img_train, occupancy=50, img_id=3, scale_img=1.5, self_supervision=False,
-                            same_random=0, alpha=0.3):
-    return add_watermark_noise_generic(
-        img_train=img_train,
-        occupancy=occupancy,
-        img_id=img_id,
-        scale_img=scale_img,
-        self_supervision=self_supervision,
-        same_random=same_random,
-        alpha=alpha,
-        fixed_position=(128, 128)
-    )
-
 
 def load_froze_vgg16():
     # Fine-tuning

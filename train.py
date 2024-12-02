@@ -19,8 +19,6 @@ parser.add_argument("--preprocess", type=bool, default=False, help='run prepare_
 parser.add_argument("--batchSize", type=int, default=8, help="Training batch size")
 parser.add_argument("--num_of_layers", type=int, default=17, help="Number of total layers(DnCNN)")
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-parser.add_argument('--config', type=str, default='configs/config.yaml',
-                    help="training configuration")
 parser.add_argument("--milestone", type=int, default=30, help="When to decay learning rate; should be less than epochs")
 parser.add_argument("--lr", type=float, default=1e-3, help="Initial learning rate")
 parser.add_argument("--alpha", type=float, default=0.3, help="The opacity of the watermark")
