@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import List, Union
 
 from dataset import prepare_data
-from utils import get_config
+from utils.get_config import get_config
 
 
 @dataclass

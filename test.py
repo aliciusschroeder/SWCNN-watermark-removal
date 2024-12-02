@@ -6,12 +6,17 @@ import cv2
 import matplotlib.image as matImage
 import matplotlib.pyplot as plt
 
+import torch
 from torch.autograd import Variable
 from torch import device as torchdevice
 from torch.cuda import is_available as cuda_is_available
+import torch.nn as nn
 
 from models import HN
-from utils import *
+from utils.validation import batch_PSNR
+from utils.get_config import get_config
+from utils.validation import *
+from utils.watermark import add_watermark_noise_test
 
 device = torchdevice("cuda" if cuda_is_available() else "cpu")
 
@@ -24,18 +29,26 @@ config = get_config('configs/config.yaml')
 parser = argparse.ArgumentParser(description="watermark removal")
 parser.add_argument('--config', type=str, default='configs/config.yaml',
                     help="training configuration")
-parser.add_argument("--num_of_layers", type=int, default=17, help="Number of total layers")
+parser.add_argument("--num_of_layers", type=int, default=17, 
+                    help="Number of total layers")
 parser.add_argument("--modeldir", type=str, default=config['train_model_out_path_SWCNN'],
                     help='path of model files')  # /media/npu/Data/jtc/data/models
-parser.add_argument("--net", type=str, default="HN", help='Network used in test')
-parser.add_argument("--test_data", type=str, default='SWCNN_test', help='The set of tests we created')
-parser.add_argument("--test_noiseL", type=float, default=25, help='noise level used on test set')
-parser.add_argument("--display", type=str, default="False", help='Whether to display an image')
-
-parser.add_argument("--alpha", type=float, default=0.3, help="The opacity of the watermark")
-parser.add_argument("--loss", type=str, default="L1", help='The loss function used for training')
-parser.add_argument("--self_supervised", type=str, default="True", help='T stands for TRUE and F stands for FALSE')
-parser.add_argument("--PN", type=str, default="True", help='Whether to use perception network')
+parser.add_argument("--net", type=str, default="HN", 
+                    help='Network used in test')
+parser.add_argument("--test_data", type=str, default='test', 
+                    help='The set of tests we created')
+parser.add_argument("--test_noiseL", type=float, default=25, 
+                    help='noise level used on test set')
+parser.add_argument("--display", type=str, default="False", 
+                    help='Whether to display an image')
+parser.add_argument("--alpha", type=float, default=0.3, 
+                    help="The opacity of the watermark")
+parser.add_argument("--loss", type=str, default="L1", 
+                    help='The loss function used for training')
+parser.add_argument("--self_supervised", type=str, default="True", 
+                    help='T stands for TRUE and F stands for FALSE')
+parser.add_argument("--PN", type=str, default="True", 
+                    help='Whether to use perception network')
 opt = parser.parse_args()
 
 if opt.PN == "True":
@@ -68,7 +81,12 @@ def water_test():
     device_ids = [0]
     model = nn.DataParallel(net, device_ids=device_ids).to(device)
     # load model
-    model.load_state_dict(torch.load(os.path.join(opt.modeldir, model_name)))
+    model.load_state_dict(
+        torch.load(
+            os.path.join(opt.modeldir, model_name),
+            map_location=torch.device(device)
+        )
+    )
     model.eval()
     print('Loading data info ...\n')
     data_path = config['train_data_path']
@@ -82,7 +100,9 @@ def water_test():
     all_psnr_avg = 0
     all_ssim_avg = 0
     all_mse_avg = 0
-    for img_index in range(12):
+
+    # TODO: Iterate over actual amount of watermarks
+    for img_index in range(1):
         print(img_index)
         img_index += 1
         psnr_test = 0
@@ -107,9 +127,19 @@ def water_test():
             # noise
             noise_gs = torch.FloatTensor(ISource.size()).normal_(mean=0, std=opt.test_noiseL / 255.)
             # add watermark
-            INoisy = add_watermark_noise_test(ISource, 0., img_id=img_index, scale_img=1.5, alpha=opt.alpha)
+            INoisy = add_watermark_noise_test(ISource, 0., img_id=2, scale_img=1.5, alpha=opt.alpha)
+            # TODO: Replace fixed img_id above with img_index below to use all watermarks again
+            #INoisy = add_watermark_noise_test(ISource, 0., img_id=img_index, scale_img=1.5, alpha=opt.alpha)
             INoisy = torch.Tensor(INoisy)  # + noise_gs
             ISource, INoisy = ISource.to(device), INoisy.to(device)
+            
+            def additional_runs(ISource, INoisy, n = 1):
+                for i in range(n):
+                    INoisy = add_watermark_noise_test(INoisy, 0., img_id=2, scale_img=1.5, alpha=opt.alpha)
+                    INoisy = torch.Tensor(INoisy)  # + noise_gs
+                    ISource, INoisy = ISource.to(device), INoisy.to(device)
+                return ISource, INoisy
+            ISource, INoisy = additional_runs(ISource, INoisy, 4)
             with torch.no_grad():  # this can save much memory
                 if opt.net == "FFDNet":
                     noise_sigma = 0 / 255.

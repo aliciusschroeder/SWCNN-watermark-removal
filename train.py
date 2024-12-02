@@ -1,33 +1,51 @@
 import argparse
 import os
+import random
 
+import numpy as np
 import torch
 import torch.optim as optim
 from torch import device as torchdevice
 from torch.autograd import Variable
 from torch.cuda import is_available as cuda_is_available
+import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 
-from dataset import Dataset, prepare_data
+
+from dataset import Dataset
 from models import HN
-from utils import *
+from utils.get_config import get_config
+from utils.train_preparation import load_froze_vgg16
+from utils.validation import batch_PSNR
+from utils.watermark import add_watermark_noise
 
 parser = argparse.ArgumentParser(description="SWCNN")
 config = get_config('configs/config.yaml')
-parser.add_argument("--preprocess", type=bool, default=False, help='run prepare_data or not')
-parser.add_argument("--batchSize", type=int, default=8, help="Training batch size")
-parser.add_argument("--num_of_layers", type=int, default=17, help="Number of total layers(DnCNN)")
-parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-parser.add_argument("--milestone", type=int, default=30, help="When to decay learning rate; should be less than epochs")
-parser.add_argument("--lr", type=float, default=1e-3, help="Initial learning rate")
-parser.add_argument("--alpha", type=float, default=0.3, help="The opacity of the watermark")
-parser.add_argument("--outf", type=str, default=config['train_model_out_path_SWCNN'], help='path of model')
-parser.add_argument("--net", type=str, default="HN", help='Network used in training')
-parser.add_argument("--loss", type=str, default="L1", help='The loss function used for training')
-parser.add_argument("--self_supervised", type=str, default="True", help='T stands for TRUE and F stands for FALSE')
-parser.add_argument("--PN", type=str, default="True", help='Whether to use perception network')
-parser.add_argument("--GPU_id", type=str, default="0", help='GPU_id')
+parser.add_argument("--batchSize", type=int, default=8, 
+                    help="Training batch size")
+parser.add_argument("--num_of_layers", type=int, default=17, 
+                    help="Number of total layers(DnCNN)")
+parser.add_argument("--epochs", type=int, default=100, 
+                    help="Number of training epochs")
+parser.add_argument("--milestone", type=int, default=30, 
+                    help="When to decay learning rate; should be less than epochs")
+parser.add_argument("--lr", type=float, default=1e-3, 
+                    help="Initial learning rate")
+parser.add_argument("--alpha", type=float, default=0.3, 
+                    help="The opacity of the watermark")
+parser.add_argument("--outf", type=str, default=config['train_model_out_path_SWCNN'], 
+                    help='path of model')
+parser.add_argument("--net", type=str, default="HN", 
+                    help='Network used in training')
+parser.add_argument("--loss", type=str, default="L1", 
+                    help='The loss function used for training')
+parser.add_argument("--self_supervised", type=str, default="True", 
+                    help='T stands for TRUE and F stands for FALSE')
+parser.add_argument("--PN", type=str, default="True", 
+                    help='Whether to use perception network')
+parser.add_argument("--GPU_id", type=str, default="0", 
+                    help='GPU_id')
 opt = parser.parse_args()
 
 device = torchdevice("cuda" if cuda_is_available() else "cpu")
@@ -116,6 +134,7 @@ def main():
                 noise_sigma = noise_sigma.to(device)
                 out_train = model(imgn_train, noise_sigma)
             else:
+                noise_sigma = None
                 out_train = model(imgn_train)
             feature_out = model_vgg(out_train)
             feature_img = model_vgg(imgn_train_2)
@@ -177,6 +196,4 @@ def main():
 
 
 if __name__ == "__main__":
-    if opt.preprocess:
-        prepare_data(data_path=config['train_data_path'], patch_size=256, stride=128, aug_times=1, mode='color')
     main()
