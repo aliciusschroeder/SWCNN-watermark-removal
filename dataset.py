@@ -3,7 +3,7 @@ import os.path
 import random
 import glob
 
-from typing import List, Literal
+from typing import List, Literal, Union
 
 import cv2
 import h5py
@@ -17,7 +17,7 @@ from utils import data_augmentation
 StepType = Literal['train', 'validation']
 ModeType = Literal['gray', 'color']
 
-SCALES = [1, 0.9, 0.8, 0.7]
+DEFAULT_SCALES = [1]
 DEFAULT_MODE : ModeType = 'color'
 
 def normalize(data):
@@ -56,10 +56,17 @@ def input_files(data_path: str, step: StepType, mode: ModeType = DEFAULT_MODE) -
     h5f_filepath = h5_filepath(data_path, step, mode)
     return file_path, files, h5f_filepath
 
-def prepare_data(data_path, patch_size, stride, aug_times=1, mode=DEFAULT_MODE):
+def prepare_data(
+        data_path : str, 
+        patch_size : int, 
+        stride : int, 
+        aug_times : int = 1, 
+        mode: ModeType = DEFAULT_MODE, 
+        scales: List[Union[int, float]] = DEFAULT_SCALES
+    ) -> None:
     print('Begin to prepare data')
     print(f"Creating patches of size {patch_size} with stride {stride} and {aug_times - 1} additional augmentation times")
-    print(f"Will repeat that process for the following scales: {SCALES}")
+    print(f"Will repeat that process for the following scales: {scales}")
     train_files_path, train_files, train_h5f_path = input_files(data_path, 'train', mode)
     val_files_path, val_files, val_h5f_path = input_files(data_path, 'validation', mode)
     print(f"Collecting training files in: {train_files_path}")
@@ -84,17 +91,17 @@ def prepare_data(data_path, patch_size, stride, aug_times=1, mode=DEFAULT_MODE):
 
         h, w, c = img.shape
         # c = 3
-        for k in range(len(SCALES)):
-            if mode == 'color' and min(int(h * SCALES[k]), int(w * SCALES[k])) < 256:
+        for k in range(len(scales)):
+            if mode == 'color' and min(int(h * scales[k]), int(w * scales[k])) < 256:
                 continue
-            Img = cv2.resize(img, (int(w * SCALES[k]), int(h * SCALES[k])), interpolation=cv2.INTER_CUBIC)
+            Img = cv2.resize(img, (int(w * scales[k]), int(h * scales[k])), interpolation=cv2.INTER_CUBIC)
             if mode =='gray':
                 Img = np.expand_dims(Img[:, :, 0].copy(), 0)
             else:
                 Img = np.transpose(Img, (2, 0, 1))
             Img = np.float32(normalize(Img))
             patches = Im2Patch(Img, win=patch_size, stride=stride)
-            print("file: %s scale %.1f # samples: %d" % (files[i], SCALES[k], patches.shape[3] * aug_times))
+            print("file: %s scale %.1f # samples: %d" % (files[i], scales[k], patches.shape[3] * aug_times))
             for n in range(patches.shape[3]):
                 data = patches[:, :, :, n].copy()
                 h5f.create_dataset(str(train_num), data=data)
