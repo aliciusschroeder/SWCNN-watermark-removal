@@ -28,6 +28,8 @@ def load_watermark(
     for i in range(w):
         for k in range(h):
             color = watermark.getpixel((i, k))
+            if not isinstance(color, tuple):
+                raise ValueError(f"Unexpected pixel value at ({i}, {k}): {color}")
             if color[3] != 0:
                 transparency = int(255 * alpha)
                 color = color[:-1] + (transparency,)
@@ -101,40 +103,40 @@ def add_watermark_noise_standalone(
     standalone: bool = False
 ):
     # Standalone processing for a single image
-        data_path = "water.png"
-        watermark = Image.open(data_path).convert("RGBA")
-        # Convert the input tensor to a NumPy array and prepare the image
-        noise = img_train.numpy()
-        _, h, w = noise.shape
-        # Randomly select an occupancy level between 0 and the specified occupancy
-        occupancy = np.random.uniform(0, occupancy)
+    data_path = "water.png"
+    watermark = Image.open(data_path).convert("RGBA")
+    # Convert the input tensor to a NumPy array and prepare the image
+    noise = img_train.numpy()
+    _, h, w = noise.shape
+    # Randomly select an occupancy level between 0 and the specified occupancy
+    occupancy = np.random.uniform(0, occupancy)
 
-        # Prepare the image
-        noise = np.ascontiguousarray(np.transpose(noise, (1, 2, 0)))
-        noise = np.uint8(noise * 255)
-        noise_pil = Image.fromarray(noise)
+    # Prepare the image
+    noise = np.ascontiguousarray(np.transpose(noise, (1, 2, 0)))
+    noise = np.uint8(noise * 255)
+    noise_pil = Image.fromarray(noise)
 
-        # Initialize an empty image for counting occupied pixels
-        img_for_cnt = Image.new("L", (w, h), 0)
+    # Initialize an empty image for counting occupied pixels
+    img_for_cnt = Image.new("L", (w, h), 0)
 
-        while True:
-            # Randomly rotate and scale the watermark
-            angle = random.randint(-45, 45)
-            scale = random.uniform(0.5, 1.0)
-            rotated_watermark = watermark.rotate(angle, expand=1).resize(
-                (int(watermark.width * scale), int(watermark.height * scale))
-            )
-            # Randomly choose a position to paste the watermark
-            x = random.randint(-rotated_watermark.width, w)
-            y = random.randint(-rotated_watermark.height, h)
-            # Apply the watermark to the image
-            noise_pil = apply_watermark(noise_pil, rotated_watermark, 1.0, (x, y))
-            img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), rotated_watermark, 1.0, (x, y)).convert("L")
-            img_cnt = np.array(img_for_cnt)
-            # Check if the occupancy condition is met
-            if calculate_occupancy(img_cnt, occupancy):
-                break
-        return noise_pil
+    while True:
+        # Randomly rotate and scale the watermark
+        angle = random.randint(-45, 45)
+        scale = random.uniform(0.5, 1.0)
+        rotated_watermark = watermark.rotate(angle, expand=1).resize(
+            (int(watermark.width * scale), int(watermark.height * scale))
+        )
+        # Randomly choose a position to paste the watermark
+        x = random.randint(-rotated_watermark.width, w)
+        y = random.randint(-rotated_watermark.height, h)
+        # Apply the watermark to the image
+        noise_pil = apply_watermark(noise_pil, rotated_watermark, 1.0, (x, y))
+        img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), rotated_watermark, 1.0, (x, y)).convert("L")
+        img_cnt = np.array(img_for_cnt)
+        # Check if the occupancy condition is met
+        if calculate_occupancy(img_cnt, occupancy):
+            break
+    return noise_pil
 
 
 def add_watermark_noise_generic(
@@ -146,8 +148,7 @@ def add_watermark_noise_generic(
     img_id: Optional[int] = None,
     scale_img: Optional[float] = None,
     fixed_position: Optional[Tuple[int, int]] = None,
-    standalone: bool = False
-) -> Union[Image.Image, torch.Tensor]:
+) -> torch.Tensor:
     """
     Add watermark noise to images.
 
