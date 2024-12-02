@@ -276,23 +276,3 @@ class UNetRes(nn.Module):
         x = self.m_tail(x + x1)
 
         return x
-    
-class DRDNet(nn.Module):
-    def __init__(self, in_channels=3, out_channels=3, num_layers=20, features=64):
-        super(DRDNet, self).__init__()
-        layers = []
-        layers.append(nn.Conv2d(in_channels, features, kernel_size=3, padding=1, bias=False))
-        layers.append(BatchRenorm2d(features))
-        layers.append(nn.ReLU(inplace=True))
-        
-        for _ in range(num_layers - 2):
-            layers.append(nn.Conv2d(features, features, kernel_size=3, padding=1, bias=False))
-            layers.append(BatchRenorm2d(features))
-            layers.append(nn.ReLU(inplace=True))
-        
-        layers.append(nn.Conv2d(features, out_channels, kernel_size=3, padding=1, bias=False))
-        self.net = nn.Sequential(*layers)
-        
-    def forward(self, x):
-        out = self.net(x)
-        return out
