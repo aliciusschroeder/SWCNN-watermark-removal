@@ -1,7 +1,18 @@
 import numpy as np
+from numpy.typing import NDArray
 
+def data_augmentation(image: NDArray[np.float32], mode: int) -> NDArray[np.float32]:
+    """
+    Perform data augmentation on the given image.
 
-def data_augmentation(image, mode):
+    Args:
+        image (NDArray[np.float32]): The input image, expected to have shape (C, H, W).
+        mode (int): The augmentation mode, an integer between 0 and 7 inclusive.
+
+    Returns:
+        NDArray[np.float32]: The augmented image, with the same shape as the input image (C, H, W).
+    """
+
     out = np.transpose(image, (1, 2, 0))
     if mode == 0:
         # original

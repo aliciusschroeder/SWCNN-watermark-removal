@@ -1,14 +1,18 @@
 from models import VGG16
-
-
-import torch.nn as nn
 import torchvision.models as models
+import torch.nn as nn
+from torch.nn import DataParallel
 from torch import device as torchdevice
 from torch.cuda import is_available as cuda_is_available
 from torchvision.models import VGG16_Weights
 
+def load_froze_vgg16() -> DataParallel:
+    """
+    Load a frozen VGG16 model wrapped in nn.DataParallel.
 
-def load_froze_vgg16():
+    Returns:
+        DataParallel: The frozen VGG16 model ready for inference.
+    """
     # Fine-tuning
     model_pretrain_vgg = models.vgg16(weights=VGG16_Weights.DEFAULT)
 
@@ -24,8 +28,9 @@ def load_froze_vgg16():
     for child in net_vgg.children():
         for p in child.parameters():
             p.requires_grad = False
-    device_ids = [0]
 
+    device_ids = [0]
     device = torchdevice('cuda' if cuda_is_available() else 'cpu')
     model_vgg = nn.DataParallel(net_vgg, device_ids=device_ids).to(device)
+
     return model_vgg
