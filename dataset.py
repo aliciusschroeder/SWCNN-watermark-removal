@@ -17,7 +17,7 @@ from utils.data_augmentation import data_augmentation
 StepType = Literal['train', 'validation']
 ModeType = Literal['gray', 'color']
 
-DEFAULT_SCALES = [1]
+DEFAULT_SCALES: List[Union[int, float]] = [1]
 DEFAULT_MODE: ModeType = 'color'
 
 

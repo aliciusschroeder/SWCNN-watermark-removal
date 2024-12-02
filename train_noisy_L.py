@@ -13,19 +13,19 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torch import device as torchdevice
 from torch.cuda import is_available as cuda_is_available
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.writer import SummaryWriter
 
 from dataset import Dataset, prepare_data
 from models import (
-    DPAUNet,
-    DPUNet,
+    #DPAUNet,
+    #DPUNet,
     DnCNN,
     DnCNN_RL,
-    FFDNet,
+    #FFDNet,
     HN,
-    HN2,
-    IRCNN,
-    SUNet,
+    #HN2,
+    #IRCNN,
+    #SUNet,
 )
 from utils.validation import batch_PSNR
 from utils.get_config import get_config
@@ -93,21 +93,27 @@ def main():
     if opt.net == "HN":
         net = HN()
     elif opt.net == "SUNet":
-        net = SUNet()
+        #net = SUNet()
+        assert False
     elif opt.net == "DPUNet":
-        net = DPUNet()
+        #net = DPUNet()
+        assert False
     elif opt.net == "DPAUNet":
-        net = DPAUNet()
+        #net = DPAUNet()
+        assert False
     elif opt.net == "HN2":
-        net = HN2()
+        #net = HN2()
+        assert False
     elif opt.net == "DnCNN":
         net = DnCNN(channels=3, num_of_layers=opt.num_of_layers)
     elif opt.net == "DnCNN_RL":
         net = DnCNN_RL(channels=3, num_of_layers=opt.num_of_layers)
     elif opt.net == "FFDNet":
-        net = FFDNet(False)
+        #net = FFDNet(False)
+        assert False
     elif opt.net == "IRCNN":
-        net = IRCNN(in_nc=3, out_nc=3)
+        #net = IRCNN(in_nc=3, out_nc=3)
+        assert False
     else:
         assert False
     # TensorBoard was used to visually record the training results
@@ -170,7 +176,8 @@ def main():
             if opt.mode == 'S':
                 if opt.noiseL != 0:
                     noise_gauss = torch.FloatTensor(img_train.size()).normal_(mean=0, std=opt.noiseL / 255.)
-
+                else:
+                    noise_gauss = None
             else:
                 noise_gauss = torch.zeros(img_train.size())
                 stdN = np.random.uniform(noiseL_B[0], noiseL_B[1], size=noise_gauss.size()[0])
@@ -191,13 +198,24 @@ def main():
                 noise_sigma = Variable(noise_sigma)
                 noise_sigma = noise_sigma.to(device)
                 out_train = model(imgn_train, noise_sigma)
+                out_dn = None
+                out_wm = None
+                feature_out_wm = None
             elif opt.net == "SUNet":
                 out_dn, out_train = model(imgn_train)
+                out_wm = None
+                feature_out_wm = None
+                noise_sigma = None
             elif opt.net == "DPUNet" or opt.net == "DPAUNet":
                 out_train, out_dn, out_wm = model(imgn_train)
                 feature_out_wm = model_vgg(out_wm)
+                noise_sigma = None
             else:
                 out_train = model(imgn_train)
+                out_dn = None
+                out_wm = None
+                feature_out_wm = None
+                noise_sigma = None
             feature_out = model_vgg(out_train)
 
             feature_img = model_vgg(imgn_train_2)

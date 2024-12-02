@@ -6,7 +6,7 @@ from skimage.metrics import mean_squared_error as compare_mse, peak_signal_noise
 from skimage.metrics import structural_similarity as compare_ssim
 
 
-
+# TODO: Implement working batch_SSIM for test.py
 """ def batch_SSIM(img, imclean, data_range):
     Img = img.data.cpu().numpy().astype(np.float32)
     Iclean = imclean.data.cpu().numpy().astype(np.float32)

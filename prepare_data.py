@@ -1,8 +1,8 @@
 import argparse
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Union, cast
 
-from dataset import prepare_data
+from dataset import prepare_data, ModeType
 from utils.get_config import get_config
 
 
@@ -12,8 +12,15 @@ class Args:
     patch_size: int
     stride: int
     aug_times: int
-    mode: str
+    mode: ModeType
 
+def str_to_mode(mode: str) -> ModeType:
+    if mode == 'gray':
+        return 'gray'
+    elif mode == 'color':
+        return 'color'
+    else:
+        raise ValueError(f"Invalid mode: {mode}")
 
 parser = argparse.ArgumentParser(description="SWCNN")
 parser.add_argument("--scales", nargs='+', default=[1],
@@ -24,7 +31,7 @@ parser.add_argument("--stride", type=int, default=128,
                     help="Stride")
 parser.add_argument("--aug_times", type=int, default=1,
                     help="Augmentation times (1 = no additional augmentation)")
-parser.add_argument("--mode", type=str, default='color',
+parser.add_argument("--mode", type=str_to_mode, default='color',
                     help="Mode (gray or color)")
 
 parsed_args = parser.parse_args()
@@ -33,7 +40,7 @@ args = Args(
     patch_size=parsed_args.patch_size,
     stride=parsed_args.stride,
     aug_times=parsed_args.aug_times,
-    mode=parsed_args.mode
+    mode=cast(ModeType, parsed_args.mode)
 )
 
 config = get_config('configs/config.yaml')

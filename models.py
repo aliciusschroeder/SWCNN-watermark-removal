@@ -137,8 +137,10 @@ class HN(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight.data)
-                m.bias.data.zero_()
+                if m.weight is not None:
+                    nn.init.kaiming_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
 
