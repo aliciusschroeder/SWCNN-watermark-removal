@@ -258,9 +258,10 @@ class IMDBlock(nn.Module):
         self.conv1x1 = conv(self.d_nc*4, out_channels, kernel_size=1, stride=1, padding=0, bias=bias, mode=mode[0], negative_slope=negative_slope)
 
     def forward(self, x):
-        d1, r = torch.split(self.conv1(x), (self.d_nc, self.r_nc), dim=1)
-        d2, r = torch.split(self.conv2(r), (self.d_nc, self.r_nc), dim=1)
-        d3, r = torch.split(self.conv3(r), (self.d_nc, self.r_nc), dim=1)
+        # Typecheck ignored since torch documentation explicitly allows tuples instead of lists as argument
+        d1, r = torch.split(self.conv1(x), (self.d_nc, self.r_nc), dim=1) # type: ignore
+        d2, r = torch.split(self.conv2(r), (self.d_nc, self.r_nc), dim=1) # type: ignore
+        d3, r = torch.split(self.conv3(r), (self.d_nc, self.r_nc), dim=1) # type: ignore
         r = self.conv4(r)
         res = self.conv1x1(torch.cat((d1, d2, d3, r), dim=1))
         return x + res
@@ -321,7 +322,7 @@ class RCAGroup(nn.Module):
             mode = mode[0].lower() + mode[1:]
 
         RG = [RCABlock(in_channels, out_channels, kernel_size, stride, padding, bias, mode, reduction, negative_slope)  for _ in range(nb)]
-        RG.append(conv(out_channels, out_channels, mode='C'))
+        RG.append(conv(out_channels, out_channels, mode='C')) # type: ignore
         self.rg = nn.Sequential(*RG)  # self.rg = ShortcutBlock(nn.Sequential(*RG))
 
     def forward(self, x):
@@ -403,6 +404,8 @@ def upsample_upconv(in_channels=64, out_channels=3, kernel_size=3, stride=1, pad
         uc = 'uC'
     elif mode[0] == '4':
         uc = 'vC'
+    else:
+        raise ValueError('Wrong mode: [{:s}]'.format(mode))
     mode = mode.replace(mode[0], uc)
     up1 = conv(in_channels, out_channels, kernel_size, stride, padding, bias, mode=mode, negative_slope=negative_slope)
     return up1
