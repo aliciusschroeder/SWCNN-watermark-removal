@@ -1,9 +1,12 @@
+import os
 import random
-from typing import Union, Optional, Tuple
+from typing import Literal, Union, Optional, Tuple, Dict
 
 from PIL import Image
+from matplotlib import pyplot as plt
 import numpy as np
 import torch
+from scipy.ndimage import convolve
 
 ApplicationType = Literal["stamp", "map"]
 
@@ -16,6 +19,37 @@ def print_debug(
     print(*values) if debug else None
 
 def load_watermark(
+        watermark_name: Union[str, int],
+        alpha: float,
+        data_path: str = "data/watermarks/",
+        swap_blue_red_channels: bool = True
+) -> Image.Image:
+    """
+    Load a watermark image from a file and adjust its transparency.
+
+    :param filepath: The path to the watermark image file.
+    :param alpha: The transparency level (0.0 to 1.0).
+    :param swap_blue_red_channels: Whether to swap the blue and red channels.
+    :return: The watermark image with adjusted transparency.
+    """
+    filepath = f"{data_path}{watermark_name}.png"
+    filepath = f"{data_path}43.png"
+    if DEBUG:
+        print(f"Loading watermark from: {filepath} with alpha {alpha}")
+    # Load the image and ensure it's in RGBA mode
+    watermark = Image.open(filepath).convert("RGBA")
+    # Adjust the alpha channel
+    r, g, b, a = watermark.split()
+    a = a.point(lambda i: int(i * alpha)) # type: ignore # TODO: Fix type ignore
+
+    if swap_blue_red_channels:
+        # ATTENTION: b and r have been intentionally swapped because the image to be watermarked is in BGR format
+        watermark = Image.merge("RGBA", (b, g, r, a))
+    else:
+        watermark = Image.merge("RGBA", (r, g, b, a))
+    return watermark
+
+def load_watermark_old(
     random_img: Union[str, int],
     alpha: float,
     data_path: str = "data/watermarks/"
