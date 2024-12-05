@@ -49,6 +49,79 @@ def load_watermark(
         watermark = Image.merge("RGBA", (r, g, b, a))
     return watermark
 
+def apply_watermark(
+    base_image: Image.Image,
+    watermark: Image.Image,
+    scale: float,
+    position: Union[Tuple[int, int], Literal["random", "center"]],
+    application_type: ApplicationType = "map"
+) -> Image.Image:
+    # Resize the watermark according to the scale factor
+    watermark_scaled_width = int(watermark.width * scale)
+    watermark_scaled_height = int(watermark.height * scale)
+    watermark_scaled = watermark.resize(
+        (watermark_scaled_width, watermark_scaled_height),
+        resample=Image.Resampling.LANCZOS
+    )
+
+    if position == "random":
+        if application_type == "stamp":
+            random.seed()
+            x = random.randint(0, base_image.width - watermark_scaled.width)
+            y = random.randint(0, base_image.height - watermark_scaled.height)
+            position = (x, y)
+        elif application_type == "map":
+            x = random.randint(0, watermark_scaled.width - base_image.width)
+            y = random.randint(0, watermark_scaled.height - base_image.height)
+            position = (x, y)
+        else:
+            raise ValueError(f"Invalid application type: {application_type}")
+        position = (x, y)
+    elif position == "center":
+        if application_type == "map":
+            x = (watermark_scaled.width - base_image.width) // 2
+            y = (watermark_scaled.height - base_image.height) // 2
+            position = (x, y)
+        elif application_type == "stamp":
+            x = (base_image.width - watermark_scaled.width) // 2
+            y = (base_image.height - watermark_scaled.height) // 2
+            position = (x, y)
+        else:
+            raise ValueError(f"Invalid application type: {application_type}")
+    else:
+        try:
+            x, y = position
+        except ValueError:
+            raise ValueError(f"Invalid position: {position}")
+    
+    #result = base_image.copy()
+    layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
+
+    if application_type == "map":
+        crop_box = (
+            position[0],
+            position[1],
+            position[0] + base_image.width,
+            position[1] + base_image.height
+        )
+        print_debug(f"Crop box: {crop_box}\n\n")
+        watermark_cropped = watermark_scaled.crop(crop_box)
+        layer.paste(watermark_cropped, (0, 0), mask=watermark_cropped)
+    elif application_type == "stamp":
+        layer.paste(watermark_scaled, position, mask=watermark_scaled)
+
+
+    print_debug(f"Copying watermark from position {position} and scale to {scale}x")
+    print_debug(f"Base image size: {base_image.size}")
+    print_debug(f"Watermark size: {watermark.size}")
+    print_debug(f"Scaled watermark size: {watermark_scaled.size}")
+    
+    # TODO: Evaluate alpha_composite against pasting with mask on base_image
+    result = Image.alpha_composite(base_image, layer)
+
+    return result
+
+
 def load_watermark_old(
     random_img: Union[str, int],
     alpha: float,
@@ -82,7 +155,7 @@ def load_watermark_old(
     return watermark
 
 
-def apply_watermark(
+def apply_watermark_old(
     base_image: Image.Image,
     watermark: Image.Image,
     scale: float,
