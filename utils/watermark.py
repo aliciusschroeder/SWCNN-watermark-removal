@@ -5,6 +5,15 @@ from PIL import Image
 import numpy as np
 import torch
 
+ApplicationType = Literal["stamp", "map"]
+
+DEBUG = True
+
+def print_debug(
+    *values: object,
+    debug = False
+) -> None:
+    print(*values) if debug else None
 
 def load_watermark(
     random_img: Union[str, int],
@@ -89,55 +98,22 @@ def calculate_occupancy(img_cnt: np.ndarray, occupancy_ratio: float) -> bool:
     threshold_exceeded = False
     if sum_pixels > occupancy_threshold:
         threshold_exceeded = True
+    if DEBUG:
+        print(f"Occupied pixels: {sum_pixels}, Total pixels: {total_pixels}, Occupancy threshold: {occupancy_threshold}")
     return threshold_exceeded
 
-def add_watermark_noise_standalone(
-    img_train: torch.Tensor,
-    occupancy: float = 50,
-    self_supervision: bool = False,
-    same_random: int = 0,
-    alpha: float = 0.3,
-    img_id: Optional[int] = None,
-    scale_img: Optional[float] = None,
-    fixed_position: Optional[Tuple[int, int]] = None,
-    standalone: bool = False
-):
-    # Standalone processing for a single image
-    data_path = "water.png"
-    watermark = Image.open(data_path).convert("RGBA")
-    # Convert the input tensor to a NumPy array and prepare the image
-    noise = img_train.numpy()
-    _, h, w = noise.shape
-    # Randomly select an occupancy level between 0 and the specified occupancy
-    occupancy = np.random.uniform(0, occupancy)
+def show_tmp_img(tmp: Image.Image) -> None:
+    """
+    Display the temporary image for debugging purposes.
 
-    # Prepare the image
-    noise = np.ascontiguousarray(np.transpose(noise, (1, 2, 0)))
-    noise = np.uint8(noise * 255)
-    noise_pil = Image.fromarray(noise)
-
-    # Initialize an empty image for counting occupied pixels
-    img_for_cnt = Image.new("L", (w, h), 0)
-
-    while True:
-        # Randomly rotate and scale the watermark
-        angle = random.randint(-45, 45)
-        scale = random.uniform(0.5, 1.0)
-        rotated_watermark = watermark.rotate(angle, expand=1).resize(
-            (int(watermark.width * scale), int(watermark.height * scale))
-        )
-        # Randomly choose a position to paste the watermark
-        x = random.randint(-rotated_watermark.width, w)
-        y = random.randint(-rotated_watermark.height, h)
-        # Apply the watermark to the image
-        noise_pil = apply_watermark(noise_pil, rotated_watermark, 1.0, (x, y))
-        img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), rotated_watermark, 1.0, (x, y)).convert("L")
-        img_cnt = np.array(img_for_cnt)
-        # Check if the occupancy condition is met
-        if calculate_occupancy(img_cnt, occupancy):
-            break
-    return noise_pil
-
+    Args:
+        tmp (Image.Image): Temporary image to display.
+    """
+    r, g, b, a = tmp.split()
+    preview = Image.merge("RGBA", (b, g, r, a))
+    plt.imshow(preview)
+    plt.axis("off")
+    plt.show()
 
 def add_watermark_noise_generic(
     img_train: torch.Tensor,
@@ -199,6 +175,12 @@ def add_watermark_noise_generic(
     # Rearrange dimensions for processing
     img_train_np = np.ascontiguousarray(np.transpose(img_train_np, (0, 2, 3, 1)))
 
+    if DEBUG:
+        print(f"Adding watermark noise with occupancy {occupancy}, alpha {alpha}")
+        print(f"Watermark size: {watermark.size}")
+        print(f"img_train_np size: {img_w} x {img_h}")
+        print(f"Number of images: {len(img_train_np)}\n\n")
+
     for i in range(len(img_train_np)):
         # Convert the image to PIL format
         tmp = Image.fromarray((img_train_np[i] * 255).astype(np.uint8)).convert("RGBA")
@@ -217,8 +199,12 @@ def add_watermark_noise_generic(
                 x = random.randint(0, img_w - scaled_watermark.width)
                 y = random.randint(0, img_h - scaled_watermark.height)
 
-            # Apply the watermark to the image
+            # Apply the watermark to the image (debug messages are already included)
             tmp = apply_watermark(tmp, scaled_watermark, 1.0, (x, y))
+
+            if DEBUG:
+                show_tmp_img(tmp)
+
             img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), scaled_watermark, 1.0, (x, y)).convert("L")
             img_cnt = np.array(img_for_cnt)
 
@@ -317,6 +303,8 @@ def add_watermark_noise_test(
     Returns:
         torch.Tensor: Images with watermarks applied.
     """
+
+
     return add_watermark_noise_generic(
         img_train=img_train,
         occupancy=occupancy,
@@ -325,5 +313,46 @@ def add_watermark_noise_test(
         alpha=alpha,
         img_id=img_id,
         scale_img=scale_img,
-        # fixed_position=(128, 128)  # Uncomment and set position if needed
+        fixed_position=(0, 0)  # Uncomment and set position if needed
     )
+
+
+def add_watermark_noise_standalone(
+    img_train: torch.Tensor,
+    occupancy: float = 50,
+    data_path = "data/watermarks/2.png",
+):
+    # Standalone processing for a single image
+    watermark = Image.open(data_path).convert("RGBA")
+    # Convert the input tensor to a NumPy array and prepare the image
+    noise = img_train.numpy()
+    _, h, w = noise.shape
+    # Randomly select an occupancy level between 0 and the specified occupancy
+    occupancy = np.random.uniform(0, occupancy)
+
+    # Prepare the image
+    noise = np.ascontiguousarray(np.transpose(noise, (1, 2, 0)))
+    noise = np.uint8(noise * 255)
+    noise_pil = Image.fromarray(noise)
+
+    # Initialize an empty image for counting occupied pixels
+    img_for_cnt = Image.new("L", (w, h), 0)
+
+    while True:
+        # Randomly rotate and scale the watermark
+        angle = random.randint(-45, 45)
+        scale = random.uniform(0.5, 1.0)
+        rotated_watermark = watermark.rotate(angle, expand=1).resize(
+            (int(watermark.width * scale), int(watermark.height * scale))
+        )
+        # Randomly choose a position to paste the watermark
+        x = random.randint(-rotated_watermark.width, w)
+        y = random.randint(-rotated_watermark.height, h)
+        # Apply the watermark to the image
+        noise_pil = apply_watermark(noise_pil, rotated_watermark, 1.0, (x, y))
+        img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), rotated_watermark, 1.0, (x, y)).convert("L")
+        img_cnt = np.array(img_for_cnt)
+        # Check if the occupancy condition is met
+        if calculate_occupancy(img_cnt, occupancy):
+            break
+    return noise_pil
