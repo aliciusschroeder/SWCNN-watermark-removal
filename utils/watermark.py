@@ -429,53 +429,6 @@ def add_watermark_noise_test(
     )
 
 
-def add_watermark_noise_standalone(
-    img_train: torch.Tensor,
-    occupancy: float = 50,
-    data_path = "data/watermarks/2.png",
-):
-    # Standalone processing for a single image
-    watermark = Image.open(data_path).convert("RGBA")
-    # Convert the input tensor to a NumPy array and prepare the image
-    noise = img_train.numpy()
-    _, h, w = noise.shape
-    # Randomly select an occupancy level between 0 and the specified occupancy
-    occupancy = np.random.uniform(0, occupancy)
-
-    # Prepare the image
-    noise = np.ascontiguousarray(np.transpose(noise, (1, 2, 0)))
-    noise = np.uint8(noise * 255)
-    noise_pil = Image.fromarray(noise)
-
-    # Initialize an empty image for counting occupied pixels
-    img_for_cnt = Image.new("L", (w, h), 0)
-
-    while True:
-        # Randomly rotate and scale the watermark
-        angle = random.randint(-45, 45)
-        scale = random.uniform(0.5, 1.0)
-        rotated_watermark = watermark.rotate(angle, expand=1).resize(
-            (int(watermark.width * scale), int(watermark.height * scale))
-        )
-        # Randomly choose a position to paste the watermark
-        x = random.randint(-rotated_watermark.width, w)
-        y = random.randint(-rotated_watermark.height, h)
-        # Apply the watermark to the image
-        noise_pil = apply_watermark(noise_pil, rotated_watermark, 1.0, (x, y))
-        img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), rotated_watermark, 1.0, (x, y)).convert("L")
-        img_cnt = np.array(img_for_cnt)
-        # Check if the occupancy condition is met
-        if calculate_occupancy(img_cnt, occupancy):
-            break
-    return noise_pil
-
-
-# Used for Gamma correction
-def srgb_to_linear(color):
-    return np.where(color <= 0.04045, color / 12.92, ((color + 0.055) / 1.055) ** 2.4)
-def linear_to_srgb(color):
-    return np.where(color <= 0.0031308, color * 12.92, 1.055 * (color ** (1/2.4)) - 0.055)
-
 def apply_watermark_with_artifacts(
     base: Image.Image,
     watermark: Image.Image,
