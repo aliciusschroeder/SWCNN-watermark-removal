@@ -227,7 +227,7 @@ def add_watermark_noise_generic(
     occupancy: float = 50,
     self_supervision: bool = False,
     same_random: int = 0,
-    alpha: float = 0.3,
+    alpha: float = 0.5,
     img_id: Optional[int] = None,
     scale_img: Optional[float] = None,
     fixed_position: Optional[Tuple[int, int]] = None,
@@ -296,18 +296,21 @@ def add_watermark_noise_generic(
 
         while True:
             # Determine scaling factor
-            scale = scale_img if scale_img is not None else np.random.uniform(0.5, 1.0)
+            # scale = scale_img if scale_img is not None else np.random.uniform(0.5, 1.0)
+            scale = 0.5
             scaled_watermark = watermark.resize((int(watermark.width * scale), int(watermark.height * scale)))
 
             # Determine position to paste the watermark
             if fixed_position is not None:
                 x, y = fixed_position
             else:
-                x = random.randint(0, img_w - scaled_watermark.width)
-                y = random.randint(0, img_h - scaled_watermark.height)
+                #x = random.randint(0, img_w - scaled_watermark.width)
+                #y = random.randint(0, img_h - scaled_watermark.height)
+                x = random.randint(0, scaled_watermark.width - img_w)
+                y = random.randint(0, scaled_watermark.height - img_h)
 
             # Apply the watermark to the image (debug messages are already included)
-            tmp = apply_watermark(tmp, scaled_watermark, 1.0, (x, y))
+            # tmp = apply_watermark(tmp, scaled_watermark, 1.0, (x, y))
 
             if DEBUG:
                 show_tmp_img(tmp)
@@ -320,6 +323,8 @@ def add_watermark_noise_generic(
                 # Update the image in the array
                 img_rgb = np.array(tmp).astype(float) / 255.0
                 img_train_np[i] = img_rgb[:, :, :3]
+                break
+            elif occupancy == 0:
                 break
 
     # Rearrange dimensions back to original and convert to tensor
@@ -388,7 +393,7 @@ def add_watermark_noise_B(
 
 def add_watermark_noise_test(
     img_train: torch.Tensor,
-    occupancy: float = 50,
+    occupancy: float = 0,
     img_id: int = 3,
     scale_img: float = 1.5,
     self_supervision: bool = False,
@@ -463,3 +468,56 @@ def add_watermark_noise_standalone(
         if calculate_occupancy(img_cnt, occupancy):
             break
     return noise_pil
+
+
+# Used for Gamma correction
+def srgb_to_linear(color):
+    return np.where(color <= 0.04045, color / 12.92, ((color + 0.055) / 1.055) ** 2.4)
+def linear_to_srgb(color):
+    return np.where(color <= 0.0031308, color * 12.92, 1.055 * (color ** (1/2.4)) - 0.055)
+
+def apply_watermark_with_artifacts(
+    base: Image.Image,
+    watermark: Image.Image,
+    alpha: float = 0.66,
+    artifact_intensity: float = 0.1,
+    kernel_size: int = 7
+) -> Image.Image:
+    base_arr = np.array(base)
+    overlay_arr = np.array(watermark)
+    alpha_mask = overlay_arr[:, :, 3]
+    # Kernel für Bereich um nicht-transparente Pixel
+    kernel = np.ones((kernel_size, kernel_size))
+    # Erweiterte Maske erstellen mit gradueller Abnahme
+    expanded_mask = convolve(alpha_mask > 0, kernel) / kernel.sum()
+    # Artefakte nur in der erweiterten Maske erzeugen
+    result = base_arr.copy()
+    # Nur in den maskierten Bereichen Artefakte erzeugen
+    # Größe des Bereichs für lokalen Durchschnitt
+    for i in range(3):
+        channel = result[:, :, i].astype(float)
+        # Erstelle Artefakte basierend auf der originalen Farbe
+        noise = np.random.normal(0, 1, channel.shape)
+        # Gewichtete Störung, die näher an der Originalfarbe bleibt
+        artifact_mask = expanded_mask * noise * artifact_intensity
+        # Addiere die gewichtete Störung zur Originalfarbe
+        channel += (artifact_mask * channel) # local_avg * artifact_intensity +
+        # Clip-Werte und konvertiere zurück zu uint8
+        result[:, :, i] = np.clip(channel, 0, 255).astype(np.uint8)
+
+    #overlay_arr = overlay_arr.astype(np.float32)
+    #result = result.astype(np.float32)
+
+    overlay_arr = srgb_to_linear(overlay_arr / 255.0)
+    result = srgb_to_linear(result / 255.0)
+
+    strength = 100 * (1 / alpha)
+    mask_3d = np.stack([alpha_mask] * 3, axis=-1) / strength
+    overlay_arr[:, :, :3] *= mask_3d
+    result[:, :, :3] = overlay_arr[:, :, :3] + result[:, :, :3] * (1 - mask_3d)
+
+    result = linear_to_srgb(result) * 255.0
+
+    result = result.astype(np.uint8)
+    return Image.fromarray(result)
+
