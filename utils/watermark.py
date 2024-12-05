@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import os
 import random
 from typing import Literal, Union, Optional, Tuple, Dict
@@ -8,187 +9,413 @@ import numpy as np
 import torch
 from scipy.ndimage import convolve
 
+from utils.helper import print_debug
+from utils.image import linear_to_srgb, srgb_to_linear
+
 ApplicationType = Literal["stamp", "map"]
+PositionType = Union[Tuple[int, int], Literal["random", "center"]]
 
 DEBUG = True
 
-def print_debug(
-    *values: object,
-    debug = False
-) -> None:
-    print(*values) if debug else None
+@dataclass
+class ArtifactsConfig:
+    """
+    Configuration for adding artifacts around the watermark area.
+    """
+    alpha: float = 0.66
+    intensity: float = 0.1
+    kernel_size: int = 7
 
-def load_watermark(
-        watermark_name: Union[str, int],
-        alpha: float,
+class WatermarkManager:
+    """
+    Manages loading and caching of watermark images to optimize performance.
+    """
+
+    def __init__(
+        self,
         data_path: str = "data/watermarks/",
-        swap_blue_red_channels: bool = True
-) -> Image.Image:
-    """
-    Load a watermark image from a file and adjust its transparency.
+        swap_blue_red_channels: bool = True,
+        debug: bool = False
+    ):
+        """
+        Initializes the WatermarkManager by loading all watermark images into memory.
 
-    :param filepath: The path to the watermark image file.
-    :param alpha: The transparency level (0.0 to 1.0).
-    :param swap_blue_red_channels: Whether to swap the blue and red channels.
-    :return: The watermark image with adjusted transparency.
-    """
-    filepath = f"{data_path}{watermark_name}.png"
-    filepath = f"{data_path}43.png"
-    if DEBUG:
-        print(f"Loading watermark from: {filepath} with alpha {alpha}")
-    # Load the image and ensure it's in RGBA mode
-    watermark = Image.open(filepath).convert("RGBA")
-    # Adjust the alpha channel
-    r, g, b, a = watermark.split()
-    a = a.point(lambda i: int(i * alpha)) # type: ignore # TODO: Fix type ignore
+        :param data_path: Directory where watermark images are stored.
+        :param swap_blue_red_channels: Whether to swap blue and red channels.
+        :param debug: Enables debug printing if set to True.
+        """
+        self.data_path = data_path
+        self.swap_blue_red_channels = swap_blue_red_channels
+        self.debug = debug
+        self.watermarks: Dict[Union[str, int], Image.Image] = {}
+        self.watermark_maps: Dict[Union[str, int], Image.Image] = {}
+        self._load_all_watermarks()
 
-    if swap_blue_red_channels:
-        # ATTENTION: b and r have been intentionally swapped because the image to be watermarked is in BGR format
-        watermark = Image.merge("RGBA", (b, g, r, a))
-    else:
-        watermark = Image.merge("RGBA", (r, g, b, a))
-    return watermark
+    def _load_all_watermarks(self) -> None:
+        """
+        Loads all .png watermark images from the data_path directory into memory.
+        """
+        if not os.path.isdir(self.data_path):
+            raise FileNotFoundError(f"Watermark directory not found: {self.data_path}")
 
-def apply_watermark(
-    base_image: Image.Image,
-    watermark: Image.Image,
-    scale: float,
-    position: Union[Tuple[int, int], Literal["random", "center"]],
-    application_type: ApplicationType = "map"
-) -> Image.Image:
-    # Resize the watermark according to the scale factor
-    watermark_scaled_width = int(watermark.width * scale)
-    watermark_scaled_height = int(watermark.height * scale)
-    watermark_scaled = watermark.resize(
-        (watermark_scaled_width, watermark_scaled_height),
-        resample=Image.Resampling.LANCZOS
-    )
+        for file in os.listdir(self.data_path):
+            filename = file.lower()
+            if filename.endswith(".png"):
+                watermark_id = os.path.splitext(file)[0]
+                if watermark_id.startswith("map_"):
+                    self.watermark_maps[watermark_id] = self._load_watermark_image(file)
+                else:
+                    try:
+                        # Attempt to convert watermark_id to integer if possible
+                        watermark_id = int(watermark_id)
+                    except ValueError:
+                        pass  # Keep as string if not an integer
+                    self.watermarks[watermark_id] = self._load_watermark_image(file)
 
-    if position == "random":
+        if self.debug:
+            print(f"Loaded {len(self.watermarks)} watermarks " +
+                  f"and {len(self.watermark_maps)} watermark maps" +
+                  "into memory.")
+
+    def _load_watermark_image(self, filename: str, alpha: float = 1.0) -> Image.Image:
+        """
+        Loads a single watermark image, adjusts its alpha, and swaps channels if necessary.
+
+        :param filename: Name of the watermark file.
+        :param alpha: Transparency level (0.0 to 1.0).
+        :return: Processed watermark Image.
+        """
+        filepath = os.path.join(self.data_path, filename)
+        if self.debug:
+            print(f"Loading watermark from: {filepath} with alpha {alpha}")
+
+        watermark = Image.open(filepath).convert("RGBA")
+
+        # Adjust the alpha channel
+        r, g, b, a_channel = watermark.split()
+        if alpha != 1.0:
+            a_channel = a_channel.point(lambda i: int(i * alpha)) # type: ignore # TODO: Check later for type hinting
+        if self.swap_blue_red_channels:
+            # Swap blue and red channels intentionally
+            watermark = Image.merge("RGBA", (b, g, r, a_channel))
+        else:
+            watermark = Image.merge("RGBA", (r, g, b, a_channel))
+        return watermark
+
+    def get_watermark(
+        self, 
+        watermark_id: Union[str, int], 
+        alpha: float = 1.0
+    ) -> Image.Image:
+        """
+        Retrieves a watermark image by its ID, applying the specified alpha transparency.
+
+        :param watermark_id: Identifier of the watermark.
+        :param alpha: Transparency level (0.0 to 1.0).
+        :return: Watermark Image with adjusted transparency.
+        """
+        watermark = self.watermarks.get(watermark_id)
+        if watermark is None:
+            raise ValueError(f"Watermark with ID '{watermark_id}' not found.")
+
+        if alpha != 1.0:
+            # Create a copy to adjust alpha without modifying the cached watermark
+            watermark = watermark.copy()
+            r, g, b, a_channel = watermark.split()
+            a_channel = a_channel.point(lambda i: int(i * alpha)) # type: ignore # TODO: Check later for type hinting
+            watermark = Image.merge("RGBA", (r, g, b, a_channel))
+
+        return watermark
+
+    def get_random_watermark_id(
+        self,
+        application_type: ApplicationType = "map",
+        seed: Optional[int] = None
+    ) -> Union[str, int]:
+        """
+        Retrieves a random watermark ID. Optionally, seeds the random number generator.
+
+        :param seed: Seed for the random number generator.
+        :return: Random watermark ID.
+        """
+        if seed is not None:
+            random.seed(seed)
         if application_type == "stamp":
-            random.seed()
-            x = random.randint(0, base_image.width - watermark_scaled.width)
-            y = random.randint(0, base_image.height - watermark_scaled.height)
-            position = (x, y)
+            return random.choice(list(self.watermarks.keys()))
         elif application_type == "map":
-            x = random.randint(0, watermark_scaled.width - base_image.width)
-            y = random.randint(0, watermark_scaled.height - base_image.height)
-            position = (x, y)
+            return random.choice(list(self.watermark_maps.keys()))
         else:
             raise ValueError(f"Invalid application type: {application_type}")
-        position = (x, y)
-    elif position == "center":
-        if application_type == "map":
-            x = (watermark_scaled.width - base_image.width) // 2
-            y = (watermark_scaled.height - base_image.height) // 2
-            position = (x, y)
-        elif application_type == "stamp":
-            x = (base_image.width - watermark_scaled.width) // 2
-            y = (base_image.height - watermark_scaled.height) // 2
-            position = (x, y)
-        else:
-            raise ValueError(f"Invalid application type: {application_type}")
-    else:
-        try:
-            x, y = position
-        except ValueError:
-            raise ValueError(f"Invalid position: {position}")
-    
-    #result = base_image.copy()
-    layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
 
-    if application_type == "map":
+    def prepare_watermark_stamp(
+        self,
+        watermark_id: Union[str, int],
+        alpha: float = 1.0,
+        scale: float = 1.0,
+    ) -> Image.Image:
+        """
+        Prepares a watermark image for stamping on a base image.
+
+        :param watermark_id: Identifier of the watermark.
+        :param alpha: Transparency level (0.0 to 1.0).
+        :param scale: Scaling factor for the watermark.
+        :return: Watermark Image prepared for stamping.
+        """
+        watermark = self.get_watermark(watermark_id, alpha)
+        if scale == 1.0:
+            return watermark
+        
+        watermark_resized = watermark.resize(
+            (
+                int(watermark.width * scale),
+                int(watermark.height * scale)
+            ),
+            resample=Image.Resampling.LANCZOS
+        )
+        return watermark_resized
+
+    def prepare_watermark_map(
+        self,
+        watermark_id: Union[str, int],
+        base_width: int,
+        base_height: int,
+        position: PositionType = "center",
+        alpha: float = 1.0,
+        scale: float = 1.0,
+        random_seed: Optional[int] = None
+    ) -> Image.Image:
+        """
+        Prepares a watermark image for overlaying on a base image as a map.
+
+        :param watermark_id: Identifier of the watermark.
+        :param base_width: Width of the base image.
+        :param base_height: Height of the base image.
+        :param alpha: Transparency level (0.0 to 1.0).
+        :param scale: Scaling factor for the watermark.
+        :return: Watermark Image prepared for overlaying as a map.
+        """
+        watermark = self.get_watermark(watermark_id, alpha)
+        watermark_resized = watermark.resize(
+            (
+                int(watermark.width * scale),
+                int(watermark.height * scale)
+            ),
+            resample=Image.Resampling.LANCZOS
+        ) if scale != 1.0 else watermark
+
+        # Ensure the watermark is at least as large as the base image
+        if watermark_resized.width < base_width or watermark_resized.height < base_height:
+            watermark_resized = watermark_resized.resize(
+                (
+                    max(watermark_resized.width, base_width),
+                    max(watermark_resized.height, base_height)
+                ),
+                resample=Image.Resampling.LANCZOS
+            )
+        
+        if position == "center":
+            x = (watermark_resized.width - base_width) // 2
+            y = (watermark_resized.height - base_height) // 2
+            position = (int(x), int(y))
+        elif position == "random":
+            if random_seed is not None:
+                random.seed(random_seed)
+            x = random.randint(0, max(watermark_resized.width - base_width, 0))
+            y = random.randint(0, max(watermark_resized.height - base_height, 0))
+            position = (x, y)
+        
         crop_box = (
             position[0],
             position[1],
-            position[0] + base_image.width,
-            position[1] + base_image.height
+            position[0] + base_width,
+            position[1] + base_height
         )
-        print_debug(f"Crop box: {crop_box}\n\n")
-        watermark_cropped = watermark_scaled.crop(crop_box)
-        layer.paste(watermark_cropped, (0, 0), mask=watermark_cropped)
-    elif application_type == "stamp":
-        layer.paste(watermark_scaled, position, mask=watermark_scaled)
 
+        return watermark_resized.crop(crop_box)
 
-    print_debug(f"Copying watermark from position {position} and scale to {scale}x")
-    print_debug(f"Base image size: {base_image.size}")
-    print_debug(f"Watermark size: {watermark.size}")
-    print_debug(f"Scaled watermark size: {watermark_scaled.size}")
+    def apply_watermark(
+        self,
+        base_image: Image.Image,
+        watermark_id: Union[str, int],
+        scale: float = 1.0,
+        alpha: float = 1.0, # Ignored, if artifacts_config is provided as their alpha works differently
+        position: PositionType = "center",
+        application_type: ApplicationType = "map",
+        artifacts_config: Optional[ArtifactsConfig] = None,
+        random_seed: Optional[int] = None,
+    ) -> Image.Image:
+        print_debug(f"Applying watermark at position {position} with scale {scale}x", DEBUG)
+        print_debug(f"Base image size: {base_image.size}", DEBUG)
+
+        base_w, base_h = base_image.size
+        layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
+
+        if application_type == "stamp":
+            wm = self.prepare_watermark_stamp(
+                watermark_id, alpha, scale
+            )
+            if position == "random":
+                if random_seed is not None:
+                    random.seed(random_seed)
+                x = random.randint(0, base_w - wm.width)
+                y = random.randint(0, base_h - wm.height)
+                position = (x, y)
+            elif not (isinstance(position, tuple) and len(position) == 2):
+                raise ValueError(
+                    f"Invalid position: {position}" +
+                    "stamp mode only supports 'random' or (x, y) position"
+                )
+            layer.paste(wm, position, mask=wm)
+        elif application_type == "map":
+            wm = self.prepare_watermark_map(
+                watermark_id, base_w, base_h, position, alpha, scale
+            )
+            if artifacts_config is not None:
+                print_debug(f"Applying artifacts using config: {artifacts_config}", DEBUG)
+                result = apply_watermark_with_artifacts(
+                    base_image, 
+                    wm, 
+                    artifacts_config.alpha, 
+                    artifacts_config.intensity, 
+                    artifacts_config.kernel_size
+                )
+                return result
+            else:
+                layer.paste(wm, (0, 0), mask=wm)
+        else:
+            raise ValueError(
+                f"Invalid application type: {application_type}"
+            )
+
+        # Composite the watermark layer onto the base image
+        result = Image.alpha_composite(base_image, layer)
+        return result
     
-    # TODO: Evaluate alpha_composite against pasting with mask on base_image
-    result = Image.alpha_composite(base_image, layer)
+    def add_watermark_generic(
+        self,
+        img_train: torch.Tensor,
+        img_id: Optional[Union[str, int]] = None,
+        occupancy: float = 0,
+        self_supervision: bool = False,
+        same_random: int = 0,
+        scale: Union[float, Tuple[float, float]] = 1.0,
+        alpha: float = 1.0, # Ignored, if artifacts_config is provided as their alpha works differently
+        position: PositionType = "center",
+        application_type: ApplicationType = "map",
+        artifacts_config: Optional[ArtifactsConfig] = None,
+        random_seed: Optional[int] = None,
+    ) -> torch.Tensor:
+        """
+        Add watermark noise to images.
 
-    return result
+        This function applies watermarks to images, either in standalone mode for a single image,
+        or in batch processing mode for multiple images.
+
+        Args:
+            img_train (torch.Tensor): Input image tensor(s). In standalone mode, shape [C, H, W].
+                In batch processing mode, shape [N, C, H, W].
+            watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
+            self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
+            same_random (int, optional): Random seed or image index to use when self_supervision is True. Defaults to 0.
+            scale_img (float, optional): Fixed scale for the watermark image. If None, random scaling is used. Defaults to None.
+            fixed_position (Tuple[int, int], optional): Fixed position (x, y) to place the watermark. If None, random position is used. Defaults to None.
+
+        Returns:
+            torch.Tensor: Images with watermarks applied.
+        """
+        # Determine watermark ID
+        if img_id is not None:
+            selected_watermark_id = img_id
+        else:
+            if self_supervision:
+                selected_watermark_id = same_random
+            else: 
+                selected_watermark_id = self.get_random_watermark_id(application_type, random_seed)
+
+        # Convert input tensor to NumPy array and adjust dimensions
+        img_train_np = img_train.cpu().numpy()  # Ensure tensor is on CPU
+        n_images, _, img_h, img_w = img_train_np.shape
+
+        # Randomly select an occupancy level between 0 and the specified occupancy
+        occupancy = np.random.uniform(0, occupancy)
+
+        # Rearrange dimensions for processing: [N, H, W, C]
+        img_train_np = np.ascontiguousarray(np.transpose(img_train_np, (0, 2, 3, 1)))
+
+        if DEBUG:
+            print(
+                "Adding watermark with " +
+                f"occupancy {occupancy:.2f}%, " +
+                f"scale {scale}, " +
+                f"alpha {alpha}, " +
+                f"position {position}" +
+                f"application type {application_type}" +
+                f"artifacts config {artifacts_config}" +
+                f"random seed {random_seed}"
+            )
+            print(f"Selected watermark ID: {selected_watermark_id}")
+
+            print(f"Input images size: {img_w}x{img_h}")
+            print(f"Number of images: {n_images}\n\n")
+
+        for i in range(n_images):
+            # Convert the image to PIL format
+            tmp = Image.fromarray((img_train_np[i] * 255).astype(np.uint8)).convert("RGBA")
+
+            # Initialize an empty image for counting occupied pixels
+            img_for_cnt = Image.new("L", (img_w, img_h), 0)
+
+            while True:
+                # Determine scaling factor
+                if isinstance(scale, tuple):
+                    scale = random.uniform(scale[0], scale[1])
+
+                # Apply the watermark to the image
+                tmp = self.apply_watermark(
+                    tmp,
+                    selected_watermark_id,
+                    scale,
+                    alpha,
+                    position,
+                    application_type,
+                    artifacts_config,
+                    random_seed
+                )
+
+                if DEBUG:
+                    show_tmp_img(tmp)
+
+                if occupancy != 0:
+                    # Apply the watermark to the counting image
+                    img_for_cnt = self.apply_watermark(
+                        img_for_cnt.convert("RGBA"),
+                        selected_watermark_id,
+                        scale,
+                        alpha,
+                        position,
+                        application_type,
+                        artifacts_config,
+                        random_seed
+                    ).convert("L")
+                    img_cnt = np.array(img_for_cnt)
+
+                    # Check if the occupancy condition is met
+                    if confirm_occupancy(img_cnt, occupancy):
+                        # Update the image in the array
+                        img_rgb = np.array(tmp).astype(np.float32) / 255.0
+                        img_train_np[i] = img_rgb[:, :, :3]
+                        break
+                else:
+                    img_rgb = np.array(tmp).astype(np.float32) / 255.0
+                    img_train_np[i] = img_rgb[:, :, :3]
+                    break
+
+        # Rearrange dimensions back to original: [N, C, H, W]
+        img_train_np = np.transpose(img_train_np, (0, 3, 1, 2))
+        return torch.tensor(img_train_np, dtype=img_train.dtype, device=img_train.device)
 
 
-def load_watermark_old(
-    random_img: Union[str, int],
-    alpha: float,
-    data_path: str = "data/watermarks/"
-) -> Image.Image:
-    """
-    Load a watermark image and adjust its opacity.
-
-    Args:
-        random_img (str or int): Filename of the watermark image without extension.
-        alpha (float): Opacity of the watermark (between 0 and 1).
-        data_path (str, optional): Path to the watermark images directory. Defaults to "data/watermarks/".
-
-    Returns:
-        Image.Image: The watermark image with adjusted opacity.
-    """
-    watermark = Image.open(f"{data_path}{random_img}.png").convert("RGBA")
-    w, h = watermark.size
-
-    for i in range(w):
-        for k in range(h):
-            color = watermark.getpixel((i, k))
-            if not isinstance(color, tuple):
-                raise ValueError(f"Unexpected pixel value at ({i}, {k}): {color}")
-            if color[3] != 0:
-                transparency = int(255 * alpha)
-                color = color[:-1] + (transparency,)
-                watermark.putpixel((i, k), color)
-
-    # Note: For performance improvement, consider using numpy arrays to adjust the alpha channel.
-    return watermark
-
-
-def apply_watermark_old(
-    base_image: Image.Image,
-    watermark: Image.Image,
-    scale: float,
-    position: Tuple[int, int]
-) -> Image.Image:
-    """
-    Apply a watermark to a base image at a specified position and scale.
-
-    Args:
-        base_image (Image.Image): The base image to which the watermark will be applied.
-        watermark (Image.Image): The watermark image.
-        scale (float): Scaling factor for the watermark.
-        position (Tuple[int, int]): (x, y) position where the watermark will be placed.
-
-    Returns:
-        Image.Image: The image with the watermark applied.
-    """
-    # Scale the watermark image
-    scaled_width = int(watermark.width * scale)
-    scaled_height = int(watermark.height * scale)
-    scaled_watermark = watermark.resize((scaled_width, scaled_height))
-
-    # Create a transparent layer the size of the base image
-    layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
-
-    # Paste the scaled watermark onto the layer at the specified position
-    layer.paste(scaled_watermark, position, scaled_watermark)
-
-    # Composite the base image and the watermark layer
-    return Image.alpha_composite(base_image, layer)
-
-
-def calculate_occupancy(img_cnt: np.ndarray, occupancy_ratio: float) -> bool:
+def confirm_occupancy(img_cnt: np.ndarray, occupancy_ratio: float) -> bool:
     """
     Determine if the occupied pixels exceed the specified occupancy ratio.
 
@@ -202,12 +429,172 @@ def calculate_occupancy(img_cnt: np.ndarray, occupancy_ratio: float) -> bool:
     sum_pixels = np.sum(img_cnt > 0)
     total_pixels = img_cnt.size
     occupancy_threshold = total_pixels * occupancy_ratio / 100
-    threshold_exceeded = False
     if sum_pixels > occupancy_threshold:
         threshold_exceeded = True
+    else:
+        threshold_exceeded = False
+
     if DEBUG:
         print(f"Occupied pixels: {sum_pixels}, Total pixels: {total_pixels}, Occupancy threshold: {occupancy_threshold}")
+
     return threshold_exceeded
+
+def add_watermark_train(
+    img_train: torch.Tensor,
+    watermark_manager: WatermarkManager,
+    occupancy: float = 50,
+    self_supervision: bool = False,
+    same_random: int = 0,
+    alpha: float = 0.3
+) -> torch.Tensor:
+    """
+    Add watermark noise to images using default parameters.
+
+    Args:
+        img_train (torch.Tensor): Input image tensor(s).
+        watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
+        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 50.
+        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
+        same_random (int, optional): Random seed or image index. Defaults to 0.
+        alpha (float, optional): Opacity of the watermark. Defaults to 0.3.
+
+    Returns:
+        torch.Tensor: Images with watermarks applied.
+    """
+    return watermark_manager.add_watermark_generic(
+        img_train=img_train,
+        occupancy=occupancy,
+        self_supervision=self_supervision,
+        same_random=same_random,
+        alpha=alpha
+    )
+
+
+def add_watermark_noise_B(
+    img_train: torch.Tensor,
+    watermark_manager: WatermarkManager,
+    occupancy: float = 50,
+    self_supervision: bool = False,
+    same_random: int = 0,
+    alpha: float = 0.3
+) -> torch.Tensor:
+    """
+    Add watermark noise to images with adjusted alpha value.
+
+    Args:
+        img_train (torch.Tensor): Input image tensor(s).
+        watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
+        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 50.
+        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
+        same_random (int, optional): Random seed or image index. Defaults to 0.
+        alpha (float, optional): Base opacity of the watermark. Actual opacity may vary. Defaults to 0.3.
+
+    Returns:
+        torch.Tensor: Images with watermarks applied.
+    """
+    # Example adjustment: Vary alpha slightly
+    alpha_variation = alpha + random.uniform(0, 0.7)
+    return watermark_manager.add_watermark_generic(
+        img_train=img_train,
+        occupancy=occupancy,
+        self_supervision=self_supervision,
+        same_random=same_random,
+        alpha=alpha_variation
+    )
+
+
+def add_watermark_noise_test(
+    img_train: torch.Tensor,
+    watermark_manager: WatermarkManager,
+    occupancy: float = 0,
+    img_id: Union[str, int] = 3,
+    scale: float = 1.5,
+    self_supervision: bool = False,
+    same_random: int = 0,
+    alpha: float = 0.3
+) -> torch.Tensor:
+    """
+    Add watermark noise to images for testing purposes.
+
+    Args:
+        img_train (torch.Tensor): Input image tensor(s).
+        watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
+        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 0.
+        img_id (Union[str, int], optional): Specific watermark image ID to use. Defaults to 3.
+        scale_img (float, optional): Fixed scale for the watermark image. Defaults to 1.5.
+        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
+        same_random (int, optional): Random seed or image index. Defaults to 0.
+        alpha (float, optional): Opacity of the watermark. Defaults to 0.3.
+
+    Returns:
+        torch.Tensor: Images with watermarks applied.
+    """
+    return watermark_manager.add_watermark_generic(
+        img_train=img_train,
+        occupancy=occupancy,
+        self_supervision=self_supervision,
+        same_random=same_random,
+        alpha=alpha,
+        img_id=img_id,
+        scale=scale,
+        position=(0, 0)
+    )
+
+
+def apply_watermark_with_artifacts(
+    base: Image.Image,
+    watermark: Image.Image,
+    alpha: float = 0.66,
+    artifact_intensity: float = 0.1,
+    kernel_size: int = 7
+) -> Image.Image:
+    """
+    Applies a watermark to the base image and introduces artifacts around the watermark area.
+
+    Args:
+        base (Image.Image): The base image.
+        watermark (Image.Image): The watermark image.
+        alpha (float, optional): Opacity of the watermark. Defaults to 0.66.
+        artifact_intensity (float, optional): Intensity of the artifacts. Defaults to 0.1.
+        kernel_size (int, optional): Size of the convolution kernel for mask expansion. Defaults to 7.
+
+    Returns:
+        Image.Image: Image with watermark and artifacts applied.
+    """
+    base_arr = np.array(base).astype(np.float32)
+    overlay_arr = np.array(watermark).astype(np.float32)
+    alpha_mask = overlay_arr[:, :, 3] / 255.0
+
+    # Create convolution kernel
+    kernel = np.ones((kernel_size, kernel_size), dtype=np.float32)
+    expanded_mask = convolve(alpha_mask > 0, kernel) / kernel.sum()
+
+    # Apply artifacts only where the mask is expanded
+    for i in range(3):  # For each RGB channel
+        channel = base_arr[:, :, i]
+        noise = np.random.normal(0, 1, channel.shape)
+        artifact_mask = expanded_mask * noise * artifact_intensity
+        channel += artifact_mask * channel  # Apply relative noise
+        channel = np.clip(channel, 0, 255)
+        base_arr[:, :, i] = channel
+
+    # Convert to linear color space
+    overlay_linear = srgb_to_linear(overlay_arr[:, :, :3] / 255.0)
+    base_linear = srgb_to_linear(base_arr[:, :, :3] / 255.0)
+
+    # Blend the images based on alpha
+    strength = 100 * (1 / alpha)
+    mask_3d = np.stack([alpha_mask] * 3, axis=-1) / strength
+    blended = overlay_linear * mask_3d + base_linear * (1 - mask_3d)
+
+    # Convert back to sRGB
+    blended_srgb = linear_to_srgb(blended) * 255.0
+    blended_srgb = np.clip(blended_srgb, 0, 255).astype(np.uint8)
+
+    # Combine with alpha channel
+    result = np.dstack((blended_srgb, np.ones_like(alpha_mask) * 255)).astype(np.uint8)
+    return Image.fromarray(result)
+
 
 def show_tmp_img(tmp: Image.Image) -> None:
     """
@@ -222,255 +609,5 @@ def show_tmp_img(tmp: Image.Image) -> None:
     plt.axis("off")
     plt.show()
 
-def add_watermark_noise_generic(
-    img_train: torch.Tensor,
-    occupancy: float = 50,
-    self_supervision: bool = False,
-    same_random: int = 0,
-    alpha: float = 0.5,
-    img_id: Optional[int] = None,
-    scale_img: Optional[float] = None,
-    fixed_position: Optional[Tuple[int, int]] = None,
-) -> torch.Tensor:
-    """
-    Add watermark noise to images.
 
-    This function applies watermarks to images, either in standalone mode for a single image,
-    or in batch processing mode for multiple images.
-
-    Args:
-        img_train (torch.Tensor): Input image tensor(s). In standalone mode, shape [C, H, W].
-            In batch processing mode, shape [N, C, H, W].
-        occupancy (float, optional): Desired occupancy ratio percentage (0-100). Defaults to 50.
-        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
-        same_random (int, optional): Random seed or image index to use when self_supervision is True. Defaults to 0.
-        alpha (float, optional): Opacity of the watermark (0 to 1). Defaults to 0.3.
-        img_id (int, optional): Specific watermark image ID to use. If None, a random image is selected. Defaults to None.
-        scale_img (float, optional): Fixed scale for the watermark image. If None, random scaling is used. Defaults to None.
-        fixed_position (Tuple[int, int], optional): Fixed position (x, y) to place the watermark. If None, random position is used. Defaults to None.
-        standalone (bool, optional): Whether to run in standalone mode for a single image. Defaults to False.
-
-    Returns:
-        Union[Image.Image, torch.Tensor]: In standalone mode, returns a PIL Image with the watermark applied.
-            In batch processing mode, returns a torch.Tensor of images with watermarks applied.
-    """
-
-    # Batch processing
-    if img_id is not None:
-        random_img = img_id
-    else:
-        random_img = same_random if self_supervision else random.randint(1, 173)
-
-    # Adjust alpha value based on whether scaling is fixed or not
-    if scale_img is not None:
-        # Fixed alpha when a specific scale is provided
-        alpha = alpha
-    else:
-        # Adjust alpha randomly for certain function variants
-        if 'add_watermark_noise_B' in add_watermark_noise_generic.__name__:
-            alpha = alpha + random.randint(0, 70) * 0.01
-
-    # Load the watermark image with adjusted opacity
-    watermark = load_watermark(random_img, alpha)
-
-    # Convert input tensor to NumPy array and adjust dimensions
-    img_train_np = img_train.numpy()
-    _, _, img_h, img_w = img_train_np.shape
-    # Randomly select an occupancy level between 0 and the specified occupancy
-    occupancy = np.random.uniform(0, occupancy)
-
-    # Rearrange dimensions for processing
-    img_train_np = np.ascontiguousarray(np.transpose(img_train_np, (0, 2, 3, 1)))
-
-    if DEBUG:
-        print(f"Adding watermark noise with occupancy {occupancy}, alpha {alpha}")
-        print(f"Watermark size: {watermark.size}")
-        print(f"img_train_np size: {img_w} x {img_h}")
-        print(f"Number of images: {len(img_train_np)}\n\n")
-
-    for i in range(len(img_train_np)):
-        # Convert the image to PIL format
-        tmp = Image.fromarray((img_train_np[i] * 255).astype(np.uint8)).convert("RGBA")
-        # Initialize an empty image for counting occupied pixels
-        img_for_cnt = Image.new("L", (img_w, img_h), 0)
-
-        while True:
-            # Determine scaling factor
-            # scale = scale_img if scale_img is not None else np.random.uniform(0.5, 1.0)
-            scale = 0.5
-            scaled_watermark = watermark.resize((int(watermark.width * scale), int(watermark.height * scale)))
-
-            # Determine position to paste the watermark
-            if fixed_position is not None:
-                x, y = fixed_position
-            else:
-                #x = random.randint(0, img_w - scaled_watermark.width)
-                #y = random.randint(0, img_h - scaled_watermark.height)
-                x = random.randint(0, scaled_watermark.width - img_w)
-                y = random.randint(0, scaled_watermark.height - img_h)
-
-            # Apply the watermark to the image (debug messages are already included)
-            # tmp = apply_watermark(tmp, scaled_watermark, 1.0, (x, y))
-
-            if DEBUG:
-                show_tmp_img(tmp)
-
-            img_for_cnt = apply_watermark(img_for_cnt.convert("RGBA"), scaled_watermark, 1.0, (x, y)).convert("L")
-            img_cnt = np.array(img_for_cnt)
-
-            # Check if the occupancy condition is met
-            if calculate_occupancy(img_cnt, occupancy):
-                # Update the image in the array
-                img_rgb = np.array(tmp).astype(float) / 255.0
-                img_train_np[i] = img_rgb[:, :, :3]
-                break
-            elif occupancy == 0:
-                break
-
-    # Rearrange dimensions back to original and convert to tensor
-    img_train_np = np.transpose(img_train_np, (0, 3, 1, 2))
-    return torch.tensor(img_train_np)
-
-
-def add_watermark_noise(
-    img_train: torch.Tensor,
-    occupancy: float = 50,
-    self_supervision: bool = False,
-    same_random: int = 0,
-    alpha: float = 0.3
-) -> torch.Tensor:
-    """
-    Add watermark noise to images using default parameters.
-
-    Args:
-        img_train (torch.Tensor): Input image tensor(s).
-        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 50.
-        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
-        same_random (int, optional): Random seed or image index. Defaults to 0.
-        alpha (float, optional): Opacity of the watermark. Defaults to 0.3.
-
-    Returns:
-        torch.Tensor: Images with watermarks applied.
-    """
-    return add_watermark_noise_generic(
-        img_train=img_train,
-        occupancy=occupancy,
-        self_supervision=self_supervision,
-        same_random=same_random,
-        alpha=alpha
-    )
-
-
-def add_watermark_noise_B(
-    img_train: torch.Tensor,
-    occupancy: float = 50,
-    self_supervision: bool = False,
-    same_random: int = 0,
-    alpha: float = 0.3
-) -> torch.Tensor:
-    """
-    Add watermark noise to images with adjusted alpha value.
-
-    Args:
-        img_train (torch.Tensor): Input image tensor(s).
-        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 50.
-        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
-        same_random (int, optional): Random seed or image index. Defaults to 0.
-        alpha (float, optional): Base opacity of the watermark. Actual opacity may vary. Defaults to 0.3.
-
-    Returns:
-        torch.Tensor: Images with watermarks applied.
-    """
-    return add_watermark_noise_generic(
-        img_train=img_train,
-        occupancy=occupancy,
-        self_supervision=self_supervision,
-        same_random=same_random,
-        alpha=alpha,
-        # Additional parameters can be set here if needed
-    )
-
-
-def add_watermark_noise_test(
-    img_train: torch.Tensor,
-    occupancy: float = 0,
-    img_id: int = 3,
-    scale_img: float = 1.5,
-    self_supervision: bool = False,
-    same_random: int = 0,
-    alpha: float = 0.3
-) -> torch.Tensor:
-    """
-    Add watermark noise to images for testing purposes.
-
-    Args:
-        img_train (torch.Tensor): Input image tensor(s).
-        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 50.
-        img_id (int, optional): Specific watermark image ID to use. Defaults to 3.
-        scale_img (float, optional): Fixed scale for the watermark image. Defaults to 1.5.
-        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
-        same_random (int, optional): Random seed or image index. Defaults to 0.
-        alpha (float, optional): Opacity of the watermark. Defaults to 0.3.
-
-    Returns:
-        torch.Tensor: Images with watermarks applied.
-    """
-
-
-    return add_watermark_noise_generic(
-        img_train=img_train,
-        occupancy=occupancy,
-        self_supervision=self_supervision,
-        same_random=same_random,
-        alpha=alpha,
-        img_id=img_id,
-        scale_img=scale_img,
-        fixed_position=(0, 0)  # Uncomment and set position if needed
-    )
-
-
-def apply_watermark_with_artifacts(
-    base: Image.Image,
-    watermark: Image.Image,
-    alpha: float = 0.66,
-    artifact_intensity: float = 0.1,
-    kernel_size: int = 7
-) -> Image.Image:
-    base_arr = np.array(base)
-    overlay_arr = np.array(watermark)
-    alpha_mask = overlay_arr[:, :, 3]
-    # Kernel für Bereich um nicht-transparente Pixel
-    kernel = np.ones((kernel_size, kernel_size))
-    # Erweiterte Maske erstellen mit gradueller Abnahme
-    expanded_mask = convolve(alpha_mask > 0, kernel) / kernel.sum()
-    # Artefakte nur in der erweiterten Maske erzeugen
-    result = base_arr.copy()
-    # Nur in den maskierten Bereichen Artefakte erzeugen
-    # Größe des Bereichs für lokalen Durchschnitt
-    for i in range(3):
-        channel = result[:, :, i].astype(float)
-        # Erstelle Artefakte basierend auf der originalen Farbe
-        noise = np.random.normal(0, 1, channel.shape)
-        # Gewichtete Störung, die näher an der Originalfarbe bleibt
-        artifact_mask = expanded_mask * noise * artifact_intensity
-        # Addiere die gewichtete Störung zur Originalfarbe
-        channel += (artifact_mask * channel) # local_avg * artifact_intensity +
-        # Clip-Werte und konvertiere zurück zu uint8
-        result[:, :, i] = np.clip(channel, 0, 255).astype(np.uint8)
-
-    #overlay_arr = overlay_arr.astype(np.float32)
-    #result = result.astype(np.float32)
-
-    overlay_arr = srgb_to_linear(overlay_arr / 255.0)
-    result = srgb_to_linear(result / 255.0)
-
-    strength = 100 * (1 / alpha)
-    mask_3d = np.stack([alpha_mask] * 3, axis=-1) / strength
-    overlay_arr[:, :, :3] *= mask_3d
-    result[:, :, :3] = overlay_arr[:, :, :3] + result[:, :, :3] * (1 - mask_3d)
-
-    result = linear_to_srgb(result) * 255.0
-
-    result = result.astype(np.uint8)
-    return Image.fromarray(result)
-
+# TODO: Implement add_watermark_standalone for testing directly with images

@@ -18,7 +18,7 @@ from models import HN
 from utils.helper import get_config
 from utils.train_preparation import load_froze_vgg16
 from utils.validation import batch_PSNR
-from utils.watermark import add_watermark_noise
+from utils.watermark import WatermarkManager, ArtifactsConfig
 
 parser = argparse.ArgumentParser(description="SWCNN")
 config = get_config('configs/config.yaml')
@@ -32,7 +32,7 @@ parser.add_argument("--milestone", type=int, default=30,
                     help="When to decay learning rate; should be less than epochs")
 parser.add_argument("--lr", type=float, default=1e-3, 
                     help="Initial learning rate")
-parser.add_argument("--alpha", type=float, default=0.3, 
+parser.add_argument("--alpha", type=float, default=0.6, 
                     help="The opacity of the watermark")
 parser.add_argument("--outf", type=str, default=config['train_model_out_path_SWCNN'], 
                     help='path of model')
@@ -99,6 +99,28 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=opt.lr)
     step = 0
 
+    wmm = WatermarkManager(
+        data_path = config['data_path'],
+        swap_blue_red_channels=True,
+        debug=True,
+    )
+
+    artifacts_config = ArtifactsConfig()
+
+    def add_watermark_train(img, seed = None):
+        result =  wmm.add_watermark_generic(
+            img,
+            occupancy=0,
+            scale=(0.45, 0.55),
+            # alpha=opt.alpha, <- Alpha not set as it's overwritten by artifact settings
+            position = 'random',
+            application_type='map',
+            artifacts_config=artifacts_config,
+            random_seed=seed,
+            self_supervision=True,
+        )
+        return result
+
     for epoch in range(opt.epochs):
         if epoch < opt.milestone:
             current_lr = opt.lr
@@ -116,10 +138,12 @@ def main():
             optimizer.zero_grad()
             img_train = data
 
-            random_img = random.randint(1, 12)
-            imgn_train = add_watermark_noise(img_train, 40, True, random_img, alpha=opt.alpha)
+            
+            random_seed = random.getrandbits(128)
+            # imgn_train = add_watermark_generic(img_train, 0, True, random_img, alpha=opt.alpha)
+            imgn_train = add_watermark_train(img_train, random_seed)
             if opt.self_supervised == "True":
-                imgn_train_2 = add_watermark_noise(img_train, 40, True, random_img, alpha=opt.alpha)
+                imgn_train_2 = add_watermark_train(img_train, random_seed)
             else:
                 imgn_train_2 = img_train
 
@@ -129,7 +153,7 @@ def main():
             imgn_train_2 = imgn_train_2.to(device)
             if opt.net == "FFDNet":
                 noise_sigma = 0 / 255.
-                noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(img_train.shape[0])]))
+                noise_sigma = torch.FloatTensor(np.array([noise_sigma for _ in range(img_train.shape[0])]))
                 noise_sigma = Variable(noise_sigma) # TODO: check if it needs to track gradients, ensure requires_grad=True is set on the tensor before removing Variable()
                 noise_sigma = noise_sigma.to(device)
                 out_train = model(imgn_train, noise_sigma)
@@ -175,7 +199,7 @@ def main():
                 w = int(int(w / 32) * 32)
                 h = int(int(h / 32) * 32)
                 img_val = img_val[:, :, 0:w, 0:h]
-                imgn_val = add_watermark_noise(img_val, 0, alpha=opt.alpha)
+                imgn_val = add_watermark_train(img_val)
                 img_val = torch.Tensor(img_val)
                 imgn_val = torch.Tensor(imgn_val)
                 with torch.no_grad():

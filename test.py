@@ -16,7 +16,7 @@ from models import HN
 from utils.validation import batch_PSNR
 from utils.helper import get_config
 from utils.validation import *
-from utils.watermark import add_watermark_noise_test
+from utils.watermark import WatermarkManager, add_watermark_noise_test
 
 device = torchdevice("cuda" if cuda_is_available() else "cpu")
 
@@ -101,6 +101,16 @@ def water_test():
     all_ssim_avg = 0
     all_mse_avg = 0
 
+    wmm = WatermarkManager()
+    def add_watermark_test(source, alpha):
+        return wmm.add_watermark_generic(
+            source,
+            alpha=alpha,
+            img_id='map_43',
+            scale=1.0,
+        )
+
+
     # TODO: Iterate over actual amount of watermarks
     for img_index in range(1):
         print(img_index)
@@ -127,7 +137,9 @@ def water_test():
             # noise
             noise_gs = torch.FloatTensor(ISource.size()).normal_(mean=0, std=opt.test_noiseL / 255.)
             # add watermark
-            INoisy = add_watermark_noise_test(ISource, 0., img_id=2, scale_img=1.5, alpha=opt.alpha)
+            # INoisy = ISource
+            INoisy = add_watermark_test(ISource, opt.alpha)
+
             # TODO: Replace fixed img_id above with img_index below to use all watermarks again
             #INoisy = add_watermark_noise_test(ISource, 0., img_id=img_index, scale_img=1.5, alpha=opt.alpha)
             INoisy = torch.Tensor(INoisy)  # + noise_gs
@@ -135,11 +147,11 @@ def water_test():
             
             def additional_runs(ISource, INoisy, n = 1):
                 for i in range(n):
-                    INoisy = add_watermark_noise_test(INoisy, 0., img_id=2, scale_img=1.5, alpha=opt.alpha)
+                    INoisy = add_watermark_test(ISource, opt.alpha)
                     INoisy = torch.Tensor(INoisy)  # + noise_gs
                     ISource, INoisy = ISource.to(device), INoisy.to(device)
                 return ISource, INoisy
-            ISource, INoisy = additional_runs(ISource, INoisy, 4)
+            # ISource, INoisy = additional_runs(ISource, INoisy, 1)
             with torch.no_grad():  # this can save much memory
                 if opt.net == "FFDNet":
                     noise_sigma = 0 / 255.

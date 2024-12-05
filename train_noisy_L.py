@@ -31,7 +31,9 @@ from utils.validation import batch_PSNR
 from utils.helper import get_config
 from utils.train_preparation import load_froze_vgg16
 from utils.validation import *
-from utils.watermark import add_watermark_noise, add_watermark_noise_B
+from utils.watermark import WatermarkManager
+
+raise NotImplementedError("This script is not yet complete. Please finish TODO's before running.")
 
 device = torchdevice("cuda" if cuda_is_available() else "cpu")
 
@@ -158,6 +160,10 @@ def main():
             optimizer.zero_grad()
             img_train = data
 
+            # TODO: Call correct method depending on watermark mode then remove dummy definitions below
+            imgn_train = torch.unsqueeze(img_train, 0)
+            imgn_train_2 = torch.unsqueeze(img_train, 0)
+            """
             random_img = random.randint(1, 12)
             if opt.mode_wm == "S":
                 imgn_train = add_watermark_noise(img_train, 40, True, random_img, alpha=opt.alpha)
@@ -169,7 +175,7 @@ def main():
                 else:
                     imgn_train_2 = add_watermark_noise_B(img_train, 40, True, random_img, alpha=opt.alpha)
             else:
-                imgn_train_2 = img_train
+                imgn_train_2 = img_train """
 
             imgn_train_mid = torch.Tensor(imgn_train)
 
@@ -273,7 +279,9 @@ def main():
                 h = int(int(h / 32) * 32)
                 img_val = img_val[:, :, 0:w, 0:h]
                 noise_gauss = torch.FloatTensor(img_val.size()).normal_(mean=0, std=opt.val_noiseL / 255.)
-                imgn_val = add_watermark_noise(img_val, 0, alpha=opt.alpha)
+                # TODO: Call correct method depending on watermark mode then remove dummy definition below
+                imgn_val = torch.Tensor(img_val)
+                # imgn_val = add_watermark_noise(img_val, 0, alpha=opt.alpha)
                 img_val = torch.Tensor(img_val)
                 if opt.noiseL == 0:
                     imgn_val = torch.Tensor(imgn_val)
@@ -303,5 +311,5 @@ def main():
 if __name__ == "__main__":
     # data preprocess
     if opt.preprocess:
-        prepare_data(data_path=config['train_data_path'], patch_size=256, stride=128, aug_times=1, mode='color')
+        prepare_data(data_path=config['data_path'], patch_size=256, stride=128, aug_times=1, mode='color')
     main()
