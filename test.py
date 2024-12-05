@@ -89,7 +89,7 @@ def water_test():
     )
     model.eval()
     print('Loading data info ...\n')
-    data_path = config['train_data_path']
+    data_path = config['data_path']
     files_source = glob.glob(os.path.join(data_path, opt.test_data, '*.jpg'))
     files_source.sort()
     # process data

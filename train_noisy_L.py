@@ -84,8 +84,8 @@ print()
 def main():
     # Load dataset
     print('Loading dataset ...\n')
-    dataset_train = Dataset(train=True, mode='color', data_path=config['train_data_path'])
-    dataset_val = Dataset(train=False, mode='color', data_path=config['train_data_path'])
+    dataset_train = Dataset(train=True, mode='color', data_path=config['data_path'])
+    dataset_val = Dataset(train=False, mode='color', data_path=config['data_path'])
     loader_train = DataLoader(dataset=dataset_train, num_workers=0, batch_size=opt.batchSize, shuffle=True)  # 4
     print("# of training samples: %d\n" % int(len(dataset_train)))
 
