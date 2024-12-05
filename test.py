@@ -14,7 +14,7 @@ import torch.nn as nn
 
 from models import HN
 from utils.validation import batch_PSNR
-from utils.get_config import get_config
+from utils.helper import get_config
 from utils.validation import *
 from utils.watermark import add_watermark_noise_test
 

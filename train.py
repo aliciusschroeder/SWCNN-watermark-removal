@@ -15,7 +15,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 from dataset import Dataset
 from models import HN
-from utils.get_config import get_config
+from utils.helper import get_config
 from utils.train_preparation import load_froze_vgg16
 from utils.validation import batch_PSNR
 from utils.watermark import add_watermark_noise
