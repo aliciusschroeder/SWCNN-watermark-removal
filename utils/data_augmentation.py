@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
+
 def data_augmentation(image: NDArray[np.float32], mode: int) -> NDArray[np.float32]:
     """
     Perform data augmentation on the given image.

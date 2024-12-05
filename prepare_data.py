@@ -14,6 +14,7 @@ class Args:
     aug_times: int
     mode: ModeType
 
+
 def str_to_mode(mode: str) -> ModeType:
     if mode == 'gray':
         return 'gray'
@@ -21,6 +22,7 @@ def str_to_mode(mode: str) -> ModeType:
         return 'color'
     else:
         raise ValueError(f"Invalid mode: {mode}")
+
 
 parser = argparse.ArgumentParser(description="SWCNN")
 parser.add_argument("--scales", nargs='+', default=[1],
@@ -48,14 +50,13 @@ config = get_config('configs/config.yaml')
 
 def main():
     prepare_data(
-        data_path=config['train_data_path'],
+        data_path=config['data_path'],
         patch_size=args.patch_size,
         stride=args.stride,
         aug_times=args.aug_times,
         mode=args.mode,
         scales=args.scales
     )
-    # prepare_data(data_path=config['train_data_path'], patch_size=256, stride=128, aug_times=1, mode='color')
 
 
 if __name__ == "__main__":
