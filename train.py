@@ -5,6 +5,7 @@ import os
 import random
 from typing import Optional
 
+from matplotlib import pyplot as plt
 import numpy as np
 import torch
 import torch.optim as optim
@@ -109,20 +110,34 @@ def main():
 
     artifacts_config = ArtifactsConfig()
 
-    def add_watermark_train(img, seed: Optional[int] = None):
-        result =  wmm.add_watermark_generic(
-            img,
-            occupancy=0,
-            scale=(0.45, 0.55),
-            # alpha=opt.alpha, <- Alpha not set as it's overwritten by artifact settings
-            position = 'random',
-            application_type='map',
-            artifacts_config=artifacts_config,
-            same_random_wm_seed=seed if seed is not None else 0,
-            # random_seed=seed, # Uncomment to make all random choices deterministic
-            self_supervision=True,
-        )
-        return result
+    def add_watermark_train(img, seed: Optional[int] = None, choice: Optional[int] = None):
+        variants = []
+        variants.append({
+            'watermark_id': 'logo_ppco',
+            'occupancy': 0,
+            'scale': 1.0,
+            'alpha': random.uniform(0.33, 1),
+            'position': 'random',
+            'application_type': 'stamp',
+            'same_random_wm_seed': seed if seed is not None else 0,
+            'self_supervision': True,
+        })
+        variants.append({
+            'watermark_id': 'map_43',
+            'occupancy': 0,
+            'scale': 0.5,  # Can also be a tuple like (0.45, 0.55)
+            'position': 'random',
+            'application_type': 'map',
+            'artifacts_config': ArtifactsConfig(
+                alpha=random.uniform(0.44, 0.88),
+                intensity=random.uniform(1.00, 2.00),
+                kernel_size=random.choice([7, 11, 15]),
+            ),
+            'self_supervision': True,
+        })
+        if choice is None:
+            choice = random.randint(0,len(variants)-1)
+        return wmm.add_watermark_generic(img, **variants[choice]), choice
 
     for epoch in range(opt.epochs):
         if epoch < opt.milestone:
@@ -141,12 +156,16 @@ def main():
             optimizer.zero_grad()
             img_train = data
 
-            
+            random.seed()
             random_seed = random.getrandbits(128)
             # imgn_train = add_watermark_generic(img_train, 0, True, random_img, alpha=opt.alpha)
-            imgn_train = add_watermark_train(img_train, random_seed)
+            imgn_train, choice = add_watermark_train(img_train, random_seed)
+
+            # plt.imshow(imgn_train[0].permute(1, 2, 0))
+            # plt.show()
+
             if opt.self_supervised == "True":
-                imgn_train_2 = add_watermark_train(img_train, random_seed)
+                imgn_train_2, _ = add_watermark_train(img_train, random_seed, choice=choice)
             else:
                 imgn_train_2 = img_train
 
