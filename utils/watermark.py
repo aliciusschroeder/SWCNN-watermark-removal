@@ -34,7 +34,7 @@ class ArtifactsConfig:
     Configuration for adding artifacts around the watermark area.
     """
     alpha: float = 0.66
-    intensity: float = 0.1
+    intensity: float = 1
     kernel_size: int = 7
 
 class WatermarkManager:
@@ -517,7 +517,7 @@ def add_watermark_train(
 def add_watermark_noise_B(
     img_train: torch.Tensor,
     watermark_manager: WatermarkManager,
-    occupancy: float = 50,
+    occupancy: float = 0,
     self_supervision: bool = False,
     same_random: int = 0,
     alpha: float = 0.3
@@ -588,9 +588,9 @@ def add_watermark_noise_test(
 def apply_watermark_with_artifacts(
     base: Image.Image,
     watermark: Image.Image,
-    alpha: float = 1,
-    artifact_intensity: float = 0.1,
-    kernel_size: int = 7
+    alpha: float,
+    artifact_intensity: float,
+    kernel_size: int
 ) -> Image.Image:
     """
     Applies a watermark to the base image and introduces artifacts around the watermark area.
@@ -598,9 +598,9 @@ def apply_watermark_with_artifacts(
     Args:
         base (Image.Image): The base image.
         watermark (Image.Image): The watermark image.
-        alpha (float, optional): Opacity of the watermark. Defaults to 0.66.
-        artifact_intensity (float, optional): Intensity of the artifacts. Defaults to 0.1.
-        kernel_size (int, optional): Size of the convolution kernel for mask expansion. Defaults to 7.
+        alpha (float, optional): Opacity of the watermark.
+        artifact_intensity (float, optional): Intensity of the artifacts.
+        kernel_size (int, optional): Size of the convolution kernel for mask expansion.
 
     Returns:
         Image.Image: Image with watermark and artifacts applied.
