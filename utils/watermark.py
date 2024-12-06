@@ -618,8 +618,7 @@ def apply_watermark_with_artifacts(
     base_linear = srgb_to_linear(base_arr[:, :, :3] / 255.0)
 
     # Blend the images based on alpha
-    strength = 100 * (1 / alpha)
-    mask_3d = np.stack([alpha_mask] * 3, axis=-1) / strength
+    mask_3d = np.stack([alpha_mask] * 3, axis=-1) * alpha
     blended = overlay_linear * mask_3d + base_linear * (1 - mask_3d)
 
     # Convert back to sRGB
