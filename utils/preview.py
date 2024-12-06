@@ -1,5 +1,6 @@
 from typing import Optional
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
 from PIL import Image
 import numpy as np
 
@@ -21,6 +22,7 @@ class PreviewManager:
         Add an image to a pool. Alternates between Pool A and Pool B.
         :param img: A PIL Image object.
         :param meta: Optional metadata string to be displayed above the image.
+        :param swap_rb: Whether to swap the red and blue channels.
         """
         if swap_rb:
             r, g, b, a = img.split()
@@ -39,42 +41,53 @@ class PreviewManager:
 
     def show_pools(self) -> None:
         """
-        Displays both pools side by side in a grid and clears the pools afterward.
+        Displays both pools side by side with Pool A on the left and Pool B on the right,
+        separated by a vertical divider, and clears the pools afterward.
         """
-        # Define grid dimensions
         num_images_a = len(self.pool_a)
         num_images_b = len(self.pool_b)
-        grid_size_a = int(np.ceil(np.sqrt(num_images_a)))
-        grid_size_b = int(np.ceil(np.sqrt(num_images_b)))
 
-        # Create subplots for Pool A and Pool B
-        fig, axes = plt.subplots(
-            max(grid_size_a, grid_size_b),
-            grid_size_a + grid_size_b,
-            figsize=(15, 8),
-        )
-        axes = axes.flatten()
+        # Determine grid size for each pool
+        # int(np.ceil(np.sqrt(num_images_a))) if num_images_a > 0 else 1
+        grid_size_a = num_images_a
+        # int(np.ceil(np.sqrt(num_images_b))) if num_images_b > 0 else 1
+        grid_size_b = num_images_b
 
-        # Display images from Pool A
+        cols = 3
+        # Determine the number of rows based on the larger grid size
+        rows = max(grid_size_a, grid_size_b) // cols + 1
+        width_ratios = [1] * cols + [0.05] + [1] * cols
+
+        # Create a figure with GridSpec: 3 columns (Pool A, Divider, Pool B)
+        fig = plt.figure(figsize=(15, 8))
+        gs = gridspec.GridSpec(
+            rows, cols*2+1, width_ratios=width_ratios, wspace=0.05)
+
+        # Add images to Pool A (Column 0)
         for i, (img, meta) in enumerate(self.pool_a):
-            ax = axes[i]
+            row = i // cols
+            col = i % cols
+            ax = fig.add_subplot(gs[row, col])
             ax.imshow(img)
-            ax.axis("off")
+            ax.axis('off')
             if meta:
                 ax.set_title(meta, fontsize=10)
 
-        # Display images from Pool B
-        offset = grid_size_a
+        # Add images to Pool B (Column 2)
         for i, (img, meta) in enumerate(self.pool_b):
-            ax = axes[offset + i]
+            row = i // cols
+            col = i % cols
+            ax = fig.add_subplot(gs[row, cols+col+1])
             ax.imshow(img)
-            ax.axis("off")
+            ax.axis('off')
             if meta:
                 ax.set_title(meta, fontsize=10)
 
-        # Hide unused axes
-        for ax in axes[len(self.pool_a) + len(self.pool_b):]:
-            ax.axis("off")
+        # Add vertical divider
+        ax_divider = fig.add_subplot(gs[:, cols])
+        ax_divider.axis('off')  # Hide axis
+        # Draw a vertical line
+        ax_divider.plot([0.5, 0.5], [0, 1], color='black', linewidth=1)
 
         plt.tight_layout()
         plt.show()
@@ -82,3 +95,10 @@ class PreviewManager:
         # Clear both pools after showing
         self.pool_a.clear()
         self.pool_b.clear()
+
+
+if __name__ == "__main__":
+    pm = PreviewManager()
+    for i in range(16):
+        pm.add_image(Image.new("RGBA", (255, 255), color="red"))
+    pm.show_pools()
