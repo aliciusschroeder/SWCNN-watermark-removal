@@ -109,7 +109,7 @@ def main():
 
     artifacts_config = ArtifactsConfig()
 
-    def add_watermark_train(img, seed = None):
+    def add_watermark_train(img, seed: Optional[int] = None):
         result =  wmm.add_watermark_generic(
             img,
             occupancy=0,
@@ -118,7 +118,8 @@ def main():
             position = 'random',
             application_type='map',
             artifacts_config=artifacts_config,
-            random_seed=seed,
+            same_random_wm_seed=seed if seed is not None else 0,
+            # random_seed=seed, # Uncomment to make all random choices deterministic
             self_supervision=True,
         )
         return result

@@ -106,7 +106,7 @@ def water_test():
         return wmm.add_watermark_generic(
             source,
             alpha=alpha,
-            img_id='map_43',
+            watermark_id='map_43',
             scale=1.0,
         )
 

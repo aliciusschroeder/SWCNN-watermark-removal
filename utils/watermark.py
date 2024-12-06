@@ -120,7 +120,8 @@ class WatermarkManager:
 
     def get_watermark(
         self, 
-        watermark_id: Union[str, int], 
+        watermark_id: Union[str, int],
+        pool: ApplicationType = 'stamp',
         alpha: float = 1.0
     ) -> Image.Image:
         """
@@ -130,7 +131,13 @@ class WatermarkManager:
         :param alpha: Transparency level (0.0 to 1.0).
         :return: Watermark Image with adjusted transparency.
         """
-        watermark = self.watermarks.get(watermark_id)
+        if pool == 'stamp':
+            watermark = self.watermarks.get(watermark_id)
+        elif pool == 'map':
+            watermark = self.watermark_maps.get(watermark_id)
+        else:
+            raise ValueError(f"Invalid pool: {pool}")
+
         if watermark is None:
             raise ValueError(f"Watermark with ID '{watermark_id}' not found.")
 
@@ -177,7 +184,7 @@ class WatermarkManager:
         :param scale: Scaling factor for the watermark.
         :return: Watermark Image prepared for stamping.
         """
-        watermark = self.get_watermark(watermark_id, alpha)
+        watermark = self.get_watermark(watermark_id, pool='stamp', alpha=alpha)
         if scale == 1.0:
             return watermark
         
@@ -210,7 +217,7 @@ class WatermarkManager:
         :param scale: Scaling factor for the watermark.
         :return: Watermark Image prepared for overlaying as a map.
         """
-        watermark = self.get_watermark(watermark_id, alpha)
+        watermark = self.get_watermark(watermark_id, pool='map', alpha=alpha)
         watermark_resized = watermark.resize(
             (
                 int(watermark.width * scale),
@@ -312,10 +319,10 @@ class WatermarkManager:
     def add_watermark_generic(
         self,
         img_train: torch.Tensor,
-        img_id: Optional[Union[str, int]] = None,
+        watermark_id: Optional[Union[str, int]] = None,
         occupancy: float = 0,
         self_supervision: bool = False,
-        same_random: int = 0,
+        same_random_wm_seed: int = 0,
         scale: Union[float, Tuple[float, float]] = 1.0,
         alpha: float = 1.0, # Ignored, if artifacts_config is provided as their alpha works differently
         position: PositionType = "center",
@@ -334,7 +341,7 @@ class WatermarkManager:
                 In batch processing mode, shape [N, C, H, W].
             watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
             self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
-            same_random (int, optional): Random seed or image index to use when self_supervision is True. Defaults to 0.
+            same_random_wm_seed (int, optional): Random seed or image index to use when self_supervision is True. Defaults to 0.
             scale_img (float, optional): Fixed scale for the watermark image. If None, random scaling is used. Defaults to None.
             fixed_position (Tuple[int, int], optional): Fixed position (x, y) to place the watermark. If None, random position is used. Defaults to None.
 
@@ -342,11 +349,11 @@ class WatermarkManager:
             torch.Tensor: Images with watermarks applied.
         """
         # Determine watermark ID
-        if img_id is not None:
-            selected_watermark_id = img_id
+        if watermark_id is not None:
+            selected_watermark_id = watermark_id
         else:
             if self_supervision:
-                selected_watermark_id = same_random
+                selected_watermark_id = self.get_random_watermark_id(application_type, same_random_wm_seed)
             else: 
                 selected_watermark_id = self.get_random_watermark_id(application_type, random_seed)
 
@@ -487,7 +494,7 @@ def add_watermark_train(
         img_train=img_train,
         occupancy=occupancy,
         self_supervision=self_supervision,
-        same_random=same_random,
+        same_random_wm_seed=same_random,
         alpha=alpha
     )
 
@@ -520,7 +527,7 @@ def add_watermark_noise_B(
         img_train=img_train,
         occupancy=occupancy,
         self_supervision=self_supervision,
-        same_random=same_random,
+        same_random_wm_seed=same_random,
         alpha=alpha_variation
     )
 
@@ -555,9 +562,9 @@ def add_watermark_noise_test(
         img_train=img_train,
         occupancy=occupancy,
         self_supervision=self_supervision,
-        same_random=same_random,
+        same_random_wm_seed=same_random,
         alpha=alpha,
-        img_id=img_id,
+        watermark_id=img_id,
         scale=scale,
         position=(0, 0)
     )
