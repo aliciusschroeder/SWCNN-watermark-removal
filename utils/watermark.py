@@ -1,3 +1,5 @@
+# @filename: watermark.py
+
 from dataclasses import dataclass
 import os
 import random
@@ -11,11 +13,20 @@ from scipy.ndimage import convolve
 
 from utils.helper import print_debug
 from utils.image import linear_to_srgb, srgb_to_linear
+from utils.preview import PreviewManager
 
 ApplicationType = Literal["stamp", "map"]
 PositionType = Union[Tuple[int, int], Literal["random", "center"]]
 
-DEBUG = True
+@dataclass
+class DebugConfig():
+    # Debug printing flags
+    print_load_all_watermarks: bool = False
+    print_load_watermark_image: bool = False
+    print_apply_watermark: bool = False
+    print_add_watermark_generic: bool = False
+    # Debug visualization flags
+    show_previews_add_watermark_generic: bool = True
 
 @dataclass
 class ArtifactsConfig:
@@ -35,7 +46,7 @@ class WatermarkManager:
         self,
         data_path: str = "data/watermarks/",
         swap_blue_red_channels: bool = True,
-        debug: bool = False
+        debug: DebugConfig = DebugConfig()
     ):
         """
         Initializes the WatermarkManager by loading all watermark images into memory.
@@ -49,6 +60,7 @@ class WatermarkManager:
         self.debug = debug
         self.watermarks: Dict[Union[str, int], Image.Image] = {}
         self.watermark_maps: Dict[Union[str, int], Image.Image] = {}
+        self.preview_manager = PreviewManager()
         self._load_all_watermarks()
 
     def _load_all_watermarks(self) -> None:
@@ -58,7 +70,11 @@ class WatermarkManager:
         if not os.path.isdir(self.data_path):
             raise FileNotFoundError(f"Watermark directory not found: {self.data_path}")
 
+        print_debug(f"Found files in watermark directory: {os.listdir(self.data_path)}", 
+                    self.debug.print_load_all_watermarks)
         for file in os.listdir(self.data_path):
+            print_debug(f"Checking watermark file: {file}", 
+                        self.debug.print_load_all_watermarks)
             filename = file.lower()
             if filename.endswith(".png"):
                 watermark_id = os.path.splitext(file)[0]
@@ -72,7 +88,7 @@ class WatermarkManager:
                         pass  # Keep as string if not an integer
                     self.watermarks[watermark_id] = self._load_watermark_image(file)
 
-        if self.debug:
+        if self.debug.print_load_all_watermarks:
             print(f"Loaded {len(self.watermarks)} watermarks " +
                   f"and {len(self.watermark_maps)} watermark maps" +
                   "into memory.")
@@ -86,7 +102,7 @@ class WatermarkManager:
         :return: Processed watermark Image.
         """
         filepath = os.path.join(self.data_path, filename)
-        if self.debug:
+        if self.debug.print_load_watermark_image:
             print(f"Loading watermark from: {filepath} with alpha {alpha}")
 
         watermark = Image.open(filepath).convert("RGBA")
@@ -244,8 +260,9 @@ class WatermarkManager:
         artifacts_config: Optional[ArtifactsConfig] = None,
         random_seed: Optional[int] = None,
     ) -> Image.Image:
-        print_debug(f"Applying watermark at position {position} with scale {scale}x", DEBUG)
-        print_debug(f"Base image size: {base_image.size}", DEBUG)
+        print_debug(f"Applying watermark at position {position} with scale {scale}x" +
+                    f"Base image size: {base_image.size}", 
+                    self.debug.print_apply_watermark)
 
         base_w, base_h = base_image.size
         layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
@@ -271,7 +288,8 @@ class WatermarkManager:
                 watermark_id, base_w, base_h, position, alpha, scale
             )
             if artifacts_config is not None:
-                print_debug(f"Applying artifacts using config: {artifacts_config}", DEBUG)
+                print_debug(f"Applying artifacts using config: {artifacts_config}", 
+                            self.debug.print_apply_watermark)
                 result = apply_watermark_with_artifacts(
                     base_image, 
                     wm, 
@@ -342,7 +360,7 @@ class WatermarkManager:
         # Rearrange dimensions for processing: [N, H, W, C]
         img_train_np = np.ascontiguousarray(np.transpose(img_train_np, (0, 2, 3, 1)))
 
-        if DEBUG:
+        if self.debug.print_add_watermark_generic:
             print(
                 "Adding watermark with " +
                 f"occupancy {occupancy:.2f}%, " +
@@ -351,10 +369,10 @@ class WatermarkManager:
                 f"position {position}" +
                 f"application type {application_type}" +
                 f"artifacts config {artifacts_config}" +
+                f"random seed for watermark selection {same_random_wm_seed}" +
                 f"random seed {random_seed}"
             )
             print(f"Selected watermark ID: {selected_watermark_id}")
-
             print(f"Input images size: {img_w}x{img_h}")
             print(f"Number of images: {n_images}\n\n")
 
@@ -382,8 +400,9 @@ class WatermarkManager:
                     random_seed
                 )
 
-                if DEBUG:
-                    show_tmp_img(tmp)
+                if self.debug.show_previews_add_watermark_generic:
+                    # show_tmp_img(tmp)
+                    self.preview_manager.add_image(tmp)
 
                 if occupancy != 0:
                     # Apply the watermark to the counting image
@@ -415,7 +434,7 @@ class WatermarkManager:
         return torch.tensor(img_train_np, dtype=img_train.dtype, device=img_train.device)
 
 
-def confirm_occupancy(img_cnt: np.ndarray, occupancy_ratio: float) -> bool:
+def confirm_occupancy(img_cnt: np.ndarray, occupancy_ratio: float, debug: bool = False) -> bool:
     """
     Determine if the occupied pixels exceed the specified occupancy ratio.
 
@@ -434,8 +453,11 @@ def confirm_occupancy(img_cnt: np.ndarray, occupancy_ratio: float) -> bool:
     else:
         threshold_exceeded = False
 
-    if DEBUG:
-        print(f"Occupied pixels: {sum_pixels}, Total pixels: {total_pixels}, Occupancy threshold: {occupancy_threshold}")
+    if debug:
+        print(f"Occupied pixels: {sum_pixels}, " +
+              f"Total pixels: {total_pixels}, " +
+              f"Occupancy threshold: {occupancy_threshold}"
+        )
 
     return threshold_exceeded
 

@@ -1,6 +1,9 @@
+# @filename: train.py
+
 import argparse
 import os
 import random
+from typing import Optional
 
 import numpy as np
 import torch
@@ -100,9 +103,8 @@ def main():
     step = 0
 
     wmm = WatermarkManager(
-        data_path = config['data_path'],
-        swap_blue_red_channels=True,
-        debug=True,
+        data_path = config['data_path'] + '/watermarks',
+        swap_blue_red_channels=True
     )
 
     artifacts_config = ArtifactsConfig()
@@ -180,6 +182,7 @@ def main():
             psnr_train = batch_PSNR(out_train, img_train, 1.)
             print("[epoch %d][%d/%d] loss: %.4f PSNR_train: %.4f" %
                   (epoch + 1, i + 1, len(loader_train), loss.item(), psnr_train))
+            wmm.preview_manager.show_pools()
             step += 1
             if step % 10 == 0:
                 writer.add_scalar("PSNR", psnr_train, step)
