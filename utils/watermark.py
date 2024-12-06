@@ -163,6 +163,8 @@ class WatermarkManager:
         """
         if seed is not None:
             random.seed(seed)
+        else:
+            random.seed()
         if application_type == "stamp":
             return random.choice(list(self.watermarks.keys()))
         elif application_type == "map":
@@ -243,6 +245,8 @@ class WatermarkManager:
         elif position == "random":
             if random_seed is not None:
                 random.seed(random_seed)
+            else:
+                random.seed()
             x = random.randint(0, max(watermark_resized.width - base_width, 0))
             y = random.randint(0, max(watermark_resized.height - base_height, 0))
             position = (x, y)
@@ -281,6 +285,8 @@ class WatermarkManager:
             if position == "random":
                 if random_seed is not None:
                     random.seed(random_seed)
+                else:
+                    random.seed()
                 x = random.randint(0, base_w - wm.width)
                 y = random.randint(0, base_h - wm.height)
                 position = (x, y)
@@ -322,7 +328,7 @@ class WatermarkManager:
         watermark_id: Optional[Union[str, int]] = None,
         occupancy: float = 0,
         self_supervision: bool = False,
-        same_random_wm_seed: int = 0,
+        same_random_wm_seed: Optional[int] = None,
         scale: Union[float, Tuple[float, float]] = 1.0,
         alpha: float = 1.0, # Ignored, if artifacts_config is provided as their alpha works differently
         position: PositionType = "center",
@@ -573,7 +579,7 @@ def add_watermark_noise_test(
 def apply_watermark_with_artifacts(
     base: Image.Image,
     watermark: Image.Image,
-    alpha: float = 0.66,
+    alpha: float = 1,
     artifact_intensity: float = 0.1,
     kernel_size: int = 7
 ) -> Image.Image:
