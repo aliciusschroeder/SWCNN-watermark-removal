@@ -175,6 +175,8 @@ class WatermarkManager:
     def prepare_watermark_stamp(
         self,
         watermark_id: Union[str, int],
+        base_width: int,
+        base_height: int,
         alpha: float = 1.0,
         scale: float = 1.0,
     ) -> Image.Image:
@@ -187,8 +189,6 @@ class WatermarkManager:
         :return: Watermark Image prepared for stamping.
         """
         watermark = self.get_watermark(watermark_id, pool='stamp', alpha=alpha)
-        if scale == 1.0:
-            return watermark
         
         watermark_resized = watermark.resize(
             (
@@ -196,7 +196,16 @@ class WatermarkManager:
                 int(watermark.height * scale)
             ),
             resample=Image.Resampling.LANCZOS
-        )
+        ) if scale != 1.0 else watermark
+
+        # Crop a random section of the watermark if it is larger than the base image
+        if watermark_resized.width > base_width or watermark_resized.height > base_height:
+            x = random.randint(0, max(watermark_resized.width - base_width, 0))
+            y = random.randint(0, max(watermark_resized.height - base_height, 0))
+            watermark_resized = watermark_resized.crop(
+                (x, y, min(x + base_width, watermark_resized.width), min(y + base_height, watermark_resized.height))
+            )
+
         return watermark_resized
 
     def prepare_watermark_map(
@@ -280,15 +289,15 @@ class WatermarkManager:
 
         if application_type == "stamp":
             wm = self.prepare_watermark_stamp(
-                watermark_id, alpha, scale
+                watermark_id, base_w, base_h, alpha, scale
             )
             if position == "random":
                 if random_seed is not None:
                     random.seed(random_seed)
                 else:
                     random.seed()
-                x = random.randint(0, base_w - wm.width)
-                y = random.randint(0, base_h - wm.height)
+                x = random.randint(0, max(base_w - wm.width, 0))
+                y = random.randint(0, max(base_h - wm.height, 0))
                 position = (x, y)
             elif not (isinstance(position, tuple) and len(position) == 2):
                 raise ValueError(
