@@ -26,29 +26,29 @@ from utils.watermark import WatermarkManager, ArtifactsConfig
 
 parser = argparse.ArgumentParser(description="SWCNN")
 config = get_config('configs/config.yaml')
-parser.add_argument("--batchSize", type=int, default=8, 
+parser.add_argument("--batchSize", type=int, default=8,
                     help="Training batch size")
-parser.add_argument("--num_of_layers", type=int, default=17, 
+parser.add_argument("--num_of_layers", type=int, default=17,
                     help="Number of total layers(DnCNN)")
-parser.add_argument("--epochs", type=int, default=100, 
+parser.add_argument("--epochs", type=int, default=100,
                     help="Number of training epochs")
-parser.add_argument("--milestone", type=int, default=30, 
+parser.add_argument("--milestone", type=int, default=30,
                     help="When to decay learning rate; should be less than epochs")
-parser.add_argument("--lr", type=float, default=1e-3, 
+parser.add_argument("--lr", type=float, default=1e-3,
                     help="Initial learning rate")
-parser.add_argument("--alpha", type=float, default=0.6, 
+parser.add_argument("--alpha", type=float, default=0.6,
                     help="The opacity of the watermark")
-parser.add_argument("--outf", type=str, default=config['train_model_out_path_SWCNN'], 
+parser.add_argument("--outf", type=str, default=config['train_model_out_path_SWCNN'],
                     help='path of model')
-parser.add_argument("--net", type=str, default="HN", 
+parser.add_argument("--net", type=str, default="HN",
                     help='Network used in training')
-parser.add_argument("--loss", type=str, default="L1", 
+parser.add_argument("--loss", type=str, default="L1",
                     help='The loss function used for training')
-parser.add_argument("--self_supervised", type=str, default="True", 
+parser.add_argument("--self_supervised", type=str, default="True",
                     help='T stands for TRUE and F stands for FALSE')
-parser.add_argument("--PN", type=str, default="True", 
+parser.add_argument("--PN", type=str, default="True",
                     help='Whether to use perception network')
-parser.add_argument("--GPU_id", type=str, default="0", 
+parser.add_argument("--GPU_id", type=str, default="0",
                     help='GPU_id')
 opt = parser.parse_args()
 
@@ -68,16 +68,20 @@ if opt.self_supervised == "True":
     model_name_3 = "n2n"
 else:
     model_name_3 = "n2c"
-tensorboard_name = opt.net + model_name_1 + model_name_2 + model_name_3 + "alpha" + str(opt.alpha)
+tensorboard_name = opt.net + model_name_1 + \
+    model_name_2 + model_name_3 + "alpha" + str(opt.alpha)
 model_name = tensorboard_name + ".pth"
 print()
 
 
 def main():
     print('Loading dataset ...\n')
-    dataset_train = Dataset(train=True, mode='color', data_path=config['data_path'])
-    dataset_val = Dataset(train=False, mode='color', data_path=config['data_path'])
-    loader_train = DataLoader(dataset=dataset_train, num_workers=0, batch_size=opt.batchSize, shuffle=True)  # 4
+    dataset_train = Dataset(train=True, mode='color',
+                            data_path=config['data_path'])
+    dataset_val = Dataset(train=False, mode='color',
+                          data_path=config['data_path'])
+    loader_train = DataLoader(
+        dataset=dataset_train, num_workers=0, batch_size=opt.batchSize, shuffle=True)  # 4
     print("# of training samples: %d\n" % int(len(dataset_train)))
 
     # load network
@@ -104,7 +108,7 @@ def main():
     step = 0
 
     wmm = WatermarkManager(
-        data_path = config['data_path'] + '/watermarks',
+        data_path=config['data_path'] + '/watermarks',
         swap_blue_red_channels=True
     )
 
@@ -136,7 +140,7 @@ def main():
             'self_supervision': True,
         })
         if choice is None:
-            choice = random.randint(0,len(variants)-1)
+            choice = random.randint(0, len(variants)-1)
         return wmm.add_watermark_generic(img, **variants[choice]), choice
 
     for epoch in range(opt.epochs):
@@ -165,7 +169,8 @@ def main():
             # plt.show()
 
             if opt.self_supervised == "True":
-                imgn_train_2, _ = add_watermark_train(img_train, random_seed, choice=choice)
+                imgn_train_2, _ = add_watermark_train(
+                    img_train, random_seed, choice=choice)
             else:
                 imgn_train_2 = img_train
 
@@ -175,8 +180,10 @@ def main():
             imgn_train_2 = imgn_train_2.to(device)
             if opt.net == "FFDNet":
                 noise_sigma = 0 / 255.
-                noise_sigma = torch.FloatTensor(np.array([noise_sigma for _ in range(img_train.shape[0])]))
-                noise_sigma = Variable(noise_sigma) # TODO: check if it needs to track gradients, ensure requires_grad=True is set on the tensor before removing Variable()
+                noise_sigma = torch.FloatTensor(
+                    np.array([noise_sigma for _ in range(img_train.shape[0])]))
+                # TODO: check if it needs to track gradients, ensure requires_grad=True is set on the tensor before removing Variable()
+                noise_sigma = Variable(noise_sigma)
                 noise_sigma = noise_sigma.to(device)
                 out_train = model(imgn_train, noise_sigma)
             else:
@@ -202,13 +209,14 @@ def main():
             psnr_train = batch_PSNR(out_train, img_train, 1.)
             print("[epoch %d][%d/%d] loss: %.4f PSNR_train: %.4f" %
                   (epoch + 1, i + 1, len(loader_train), loss.item(), psnr_train))
-            wmm.preview_manager.show_pools()
+            # Call this for debugging after a step to show all training-images with their watermarks
+            # wmm.preview_manager.show_pools()
             step += 1
             if step % 10 == 0:
                 writer.add_scalar("PSNR", psnr_train, step)
                 writer.add_scalar("loss", loss.item(), step)
 
-        ## the end of each epoch
+        # the end of each epoch
         model.eval()
         # Save the trained network parameters
         torch.save(model.state_dict(), os.path.join(opt.outf, model_name))
@@ -229,7 +237,8 @@ def main():
                     img_val, imgn_val = img_val.to(device), imgn_val.to(device)
                 if opt.net == "FFDNet":
                     noise_sigma = 0 / 255.
-                    noise_sigma = torch.FloatTensor(np.array([noise_sigma for idx in range(img_val.shape[0])]))
+                    noise_sigma = torch.FloatTensor(
+                        np.array([noise_sigma for idx in range(img_val.shape[0])]))
                     noise_sigma = Variable(noise_sigma)
                     noise_sigma = noise_sigma.to(device)
                     out_val = torch.clamp(model(imgn_val, noise_sigma), 0., 1.)

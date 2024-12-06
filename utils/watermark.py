@@ -18,6 +18,7 @@ from utils.preview import PreviewManager
 ApplicationType = Literal["stamp", "map"]
 PositionType = Union[Tuple[int, int], Literal["random", "center"]]
 
+
 @dataclass
 class DebugConfig():
     # Debug printing flags
@@ -26,7 +27,8 @@ class DebugConfig():
     print_apply_watermark: bool = False
     print_add_watermark_generic: bool = False
     # Debug visualization flags
-    show_previews_add_watermark_generic: bool = True
+    show_previews_add_watermark_generic: bool = False
+
 
 @dataclass
 class ArtifactsConfig:
@@ -36,6 +38,7 @@ class ArtifactsConfig:
     alpha: float = 0.66
     intensity: float = 1
     kernel_size: int = 7
+
 
 class WatermarkManager:
     """
@@ -68,25 +71,28 @@ class WatermarkManager:
         Loads all .png watermark images from the data_path directory into memory.
         """
         if not os.path.isdir(self.data_path):
-            raise FileNotFoundError(f"Watermark directory not found: {self.data_path}")
+            raise FileNotFoundError(
+                f"Watermark directory not found: {self.data_path}")
 
-        print_debug(f"Found files in watermark directory: {os.listdir(self.data_path)}", 
+        print_debug(f"Found files in watermark directory: {os.listdir(self.data_path)}",
                     self.debug.print_load_all_watermarks)
         for file in os.listdir(self.data_path):
-            print_debug(f"Checking watermark file: {file}", 
+            print_debug(f"Checking watermark file: {file}",
                         self.debug.print_load_all_watermarks)
             filename = file.lower()
             if filename.endswith(".png"):
                 watermark_id = os.path.splitext(file)[0]
                 if watermark_id.startswith("map_"):
-                    self.watermark_maps[watermark_id] = self._load_watermark_image(file)
+                    self.watermark_maps[watermark_id] = self._load_watermark_image(
+                        file)
                 else:
                     try:
                         # Attempt to convert watermark_id to integer if possible
                         watermark_id = int(watermark_id)
                     except ValueError:
                         pass  # Keep as string if not an integer
-                    self.watermarks[watermark_id] = self._load_watermark_image(file)
+                    self.watermarks[watermark_id] = self._load_watermark_image(
+                        file)
 
         if self.debug.print_load_all_watermarks:
             print(f"Loaded {len(self.watermarks)} watermarks " +
@@ -110,7 +116,9 @@ class WatermarkManager:
         # Adjust the alpha channel
         r, g, b, a_channel = watermark.split()
         if alpha != 1.0:
-            a_channel = a_channel.point(lambda i: int(i * alpha)) # type: ignore # TODO: Check later for type hinting
+            # TODO: Check later for type hinting
+            a_channel = a_channel.point(
+                lambda i: int(i * alpha))  # type: ignore
         if self.swap_blue_red_channels:
             # Swap blue and red channels intentionally
             watermark = Image.merge("RGBA", (b, g, r, a_channel))
@@ -119,7 +127,7 @@ class WatermarkManager:
         return watermark
 
     def get_watermark(
-        self, 
+        self,
         watermark_id: Union[str, int],
         pool: ApplicationType = 'stamp',
         alpha: float = 1.0
@@ -145,7 +153,9 @@ class WatermarkManager:
             # Create a copy to adjust alpha without modifying the cached watermark
             watermark = watermark.copy()
             r, g, b, a_channel = watermark.split()
-            a_channel = a_channel.point(lambda i: int(i * alpha)) # type: ignore # TODO: Check later for type hinting
+            # TODO: Check later for type hinting
+            a_channel = a_channel.point(
+                lambda i: int(i * alpha))  # type: ignore
             watermark = Image.merge("RGBA", (r, g, b, a_channel))
 
         return watermark
@@ -189,7 +199,7 @@ class WatermarkManager:
         :return: Watermark Image prepared for stamping.
         """
         watermark = self.get_watermark(watermark_id, pool='stamp', alpha=alpha)
-        
+
         watermark_resized = watermark.resize(
             (
                 int(watermark.width * scale),
@@ -201,9 +211,11 @@ class WatermarkManager:
         # Crop a random section of the watermark if it is larger than the base image
         if watermark_resized.width > base_width or watermark_resized.height > base_height:
             x = random.randint(0, max(watermark_resized.width - base_width, 0))
-            y = random.randint(0, max(watermark_resized.height - base_height, 0))
+            y = random.randint(
+                0, max(watermark_resized.height - base_height, 0))
             watermark_resized = watermark_resized.crop(
-                (x, y, min(x + base_width, watermark_resized.width), min(y + base_height, watermark_resized.height))
+                (x, y, min(x + base_width, watermark_resized.width),
+                 min(y + base_height, watermark_resized.height))
             )
 
         return watermark_resized
@@ -246,7 +258,7 @@ class WatermarkManager:
                 ),
                 resample=Image.Resampling.LANCZOS
             )
-        
+
         if position == "center":
             x = (watermark_resized.width - base_width) // 2
             y = (watermark_resized.height - base_height) // 2
@@ -257,9 +269,10 @@ class WatermarkManager:
             else:
                 random.seed()
             x = random.randint(0, max(watermark_resized.width - base_width, 0))
-            y = random.randint(0, max(watermark_resized.height - base_height, 0))
+            y = random.randint(
+                0, max(watermark_resized.height - base_height, 0))
             position = (x, y)
-        
+
         crop_box = (
             position[0],
             position[1],
@@ -274,14 +287,15 @@ class WatermarkManager:
         base_image: Image.Image,
         watermark_id: Union[str, int],
         scale: float = 1.0,
-        alpha: float = 1.0, # Ignored, if artifacts_config is provided as their alpha works differently
+        # Ignored, if artifacts_config is provided as their alpha works differently
+        alpha: float = 1.0,
         position: PositionType = "center",
         application_type: ApplicationType = "map",
         artifacts_config: Optional[ArtifactsConfig] = None,
         random_seed: Optional[int] = None,
     ) -> Image.Image:
         print_debug(f"Applying watermark at position {position} with scale {scale}x" +
-                    f"Base image size: {base_image.size}", 
+                    f"Base image size: {base_image.size}",
                     self.debug.print_apply_watermark)
 
         base_w, base_h = base_image.size
@@ -310,13 +324,13 @@ class WatermarkManager:
                 watermark_id, base_w, base_h, position, alpha, scale
             )
             if artifacts_config is not None:
-                print_debug(f"Applying artifacts using config: {artifacts_config}", 
+                print_debug(f"Applying artifacts using config: {artifacts_config}",
                             self.debug.print_apply_watermark)
                 result = apply_watermark_with_artifacts(
-                    base_image, 
-                    wm, 
-                    artifacts_config.alpha, 
-                    artifacts_config.intensity, 
+                    base_image,
+                    wm,
+                    artifacts_config.alpha,
+                    artifacts_config.intensity,
                     artifacts_config.kernel_size
                 )
                 return result
@@ -330,7 +344,7 @@ class WatermarkManager:
         # Composite the watermark layer onto the base image
         result = Image.alpha_composite(base_image, layer)
         return result
-    
+
     def add_watermark_generic(
         self,
         img_train: torch.Tensor,
@@ -339,7 +353,8 @@ class WatermarkManager:
         self_supervision: bool = False,
         same_random_wm_seed: Optional[int] = None,
         scale: Union[float, Tuple[float, float]] = 1.0,
-        alpha: float = 1.0, # Ignored, if artifacts_config is provided as their alpha works differently
+        # Ignored, if artifacts_config is provided as their alpha works differently
+        alpha: float = 1.0,
         position: PositionType = "center",
         application_type: ApplicationType = "map",
         artifacts_config: Optional[ArtifactsConfig] = None,
@@ -368,9 +383,11 @@ class WatermarkManager:
             selected_watermark_id = watermark_id
         else:
             if self_supervision:
-                selected_watermark_id = self.get_random_watermark_id(application_type, same_random_wm_seed)
-            else: 
-                selected_watermark_id = self.get_random_watermark_id(application_type, random_seed)
+                selected_watermark_id = self.get_random_watermark_id(
+                    application_type, same_random_wm_seed)
+            else:
+                selected_watermark_id = self.get_random_watermark_id(
+                    application_type, random_seed)
 
         # Convert input tensor to NumPy array and adjust dimensions
         img_train_np = img_train.cpu().numpy()  # Ensure tensor is on CPU
@@ -380,7 +397,8 @@ class WatermarkManager:
         occupancy = np.random.uniform(0, occupancy)
 
         # Rearrange dimensions for processing: [N, H, W, C]
-        img_train_np = np.ascontiguousarray(np.transpose(img_train_np, (0, 2, 3, 1)))
+        img_train_np = np.ascontiguousarray(
+            np.transpose(img_train_np, (0, 2, 3, 1)))
 
         if self.debug.print_add_watermark_generic:
             print(
@@ -400,7 +418,8 @@ class WatermarkManager:
 
         for i in range(n_images):
             # Convert the image to PIL format
-            tmp = Image.fromarray((img_train_np[i] * 255).astype(np.uint8)).convert("RGBA")
+            tmp = Image.fromarray(
+                (img_train_np[i] * 255).astype(np.uint8)).convert("RGBA")
 
             # Initialize an empty image for counting occupied pixels
             img_for_cnt = Image.new("L", (img_w, img_h), 0)
@@ -479,9 +498,10 @@ def confirm_occupancy(img_cnt: np.ndarray, occupancy_ratio: float, debug: bool =
         print(f"Occupied pixels: {sum_pixels}, " +
               f"Total pixels: {total_pixels}, " +
               f"Occupancy threshold: {occupancy_threshold}"
-        )
+              )
 
     return threshold_exceeded
+
 
 def add_watermark_train(
     img_train: torch.Tensor,
@@ -635,7 +655,8 @@ def apply_watermark_with_artifacts(
     blended_srgb = np.clip(blended_srgb, 0, 255).astype(np.uint8)
 
     # Combine with alpha channel
-    result = np.dstack((blended_srgb, np.ones_like(alpha_mask) * 255)).astype(np.uint8)
+    result = np.dstack((blended_srgb, np.ones_like(
+        alpha_mask) * 255)).astype(np.uint8)
     return Image.fromarray(result)
 
 
