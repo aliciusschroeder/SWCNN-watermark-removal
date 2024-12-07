@@ -1,21 +1,30 @@
-# @filename: train.py
+"""
+Self-Supervised Watermark Cleaning Neural Network (SWCNN) Training Module
 
-import argparse
-import os
+This module implements a training pipeline for a neural network designed to remove
+watermarks from images using self-supervised learning techniques. It supports both
+traditional supervised and self-supervised training approaches, with optional
+perceptual loss using VGG16 features.
+
+The training process includes:
+- Dynamic watermark application with configurable parameters
+- Support for multiple network architectures
+- Flexible loss function selection (L1/L2)
+- Tensorboard logging for training monitoring
+- Periodic validation on a separate dataset
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, Optional, Tuple, Union
 import random
-from typing import Optional
 
-from matplotlib import pyplot as plt
 import numpy as np
 import torch
-import torch.optim as optim
-from torch import device as torchdevice
-from torch.autograd import Variable
-from torch.cuda import is_available as cuda_is_available
 import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard.writer import SummaryWriter
-
+from torch.utils.tensorboard import SummaryWriter # type: ignore
 
 from dataset import Dataset
 from models import HN
@@ -24,231 +33,274 @@ from utils.train_preparation import load_froze_vgg16
 from utils.validation import batch_PSNR
 from utils.watermark import WatermarkManager, ArtifactsConfig
 
-parser = argparse.ArgumentParser(description="SWCNN")
-config = get_config('configs/config.yaml')
-parser.add_argument("--batchSize", type=int, default=8,
-                    help="Training batch size")
-parser.add_argument("--num_of_layers", type=int, default=17,
-                    help="Number of total layers(DnCNN)")
-parser.add_argument("--epochs", type=int, default=100,
-                    help="Number of training epochs")
-parser.add_argument("--milestone", type=int, default=30,
-                    help="When to decay learning rate; should be less than epochs")
-parser.add_argument("--lr", type=float, default=1e-3,
-                    help="Initial learning rate")
-parser.add_argument("--alpha", type=float, default=0.6,
-                    help="The opacity of the watermark")
-parser.add_argument("--outf", type=str, default=config['train_model_out_path_SWCNN'],
-                    help='path of model')
-parser.add_argument("--net", type=str, default="HN",
-                    help='Network used in training')
-parser.add_argument("--loss", type=str, default="L1",
-                    help='The loss function used for training')
-parser.add_argument("--self_supervised", type=str, default="True",
-                    help='T stands for TRUE and F stands for FALSE')
-parser.add_argument("--PN", type=str, default="True",
-                    help='Whether to use perception network')
-parser.add_argument("--GPU_id", type=str, default="0",
-                    help='GPU_id')
-opt = parser.parse_args()
 
-device = torchdevice("cuda" if cuda_is_available() else "cpu")
+@dataclass
+class TrainingConfig:
+    """Configuration parameters for the SWCNN training process."""
+    batch_size: int = 8
+    num_layers: int = 17
+    epochs: int = 100
+    milestone: int = 30  # Learning rate decay epoch
+    initial_lr: float = 1e-3
+    watermark_alpha: float = 0.6
+    model_output_path: str = "models/SWCNN"
+    architecture: Literal["HN"] = "HN"
+    loss_type: Literal["L1", "L2"] = "L1"
+    self_supervised: bool = True
+    use_perceptual_loss: bool = True
+    gpu_id: str = "0"
+    data_path: str = "data"
 
-os.environ["CUDA_VISIBLE_DEVICES"] = opt.GPU_id
+    @property
+    def model_name(self) -> str:
+        """Generate a descriptive model name based on configuration."""
+        components = [
+            self.architecture,
+            "per" if self.use_perceptual_loss else "woper",
+            self.loss_type,
+            "n2n" if self.self_supervised else "n2c",
+            f"alpha{self.watermark_alpha}"
+        ]
+        return "_".join(components)
 
-if opt.PN == "True":
-    model_name_1 = "per"
-else:
-    model_name_1 = "woper"
-if opt.loss == "L1":
-    model_name_2 = "L1"
-else:
-    model_name_2 = "L2"
-if opt.self_supervised == "True":
-    model_name_3 = "n2n"
-else:
-    model_name_3 = "n2c"
-tensorboard_name = opt.net + model_name_1 + \
-    model_name_2 + model_name_3 + "alpha" + str(opt.alpha)
-model_name = tensorboard_name + ".pth"
-print()
+
+class WatermarkCleaner:
+    """Manages the training of watermark removal neural networks."""
+
+    def __init__(self, config: TrainingConfig):
+        self.config = config
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._setup_environment()
+        self._init_components()
+
+    def _setup_environment(self) -> None:
+        """Configure CUDA environment and create output directories."""
+        torch.cuda.set_device(int(self.config.gpu_id))
+        Path(self.config.model_output_path).mkdir(parents=True, exist_ok=True)
+
+    def _init_components(self) -> None:
+        """Initialize model, optimizer, loss functions, and data loaders."""
+        self.model = self._create_model()
+        self.vgg_model = load_froze_vgg16()
+        self.criterion = (nn.MSELoss(reduction='sum') if self.config.loss_type == "L2" 
+                         else nn.L1Loss(reduction='sum'))
+        self.criterion.to(self.device)
+        
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.initial_lr)
+        self.writer = SummaryWriter(f"runs/{self.config.model_name}")
+        
+        self.watermark_manager = WatermarkManager(
+            data_path=f"{self.config.data_path}/watermarks",
+            swap_blue_red_channels=True
+        )
+        
+        self._init_datasets()
+
+    def _create_model(self) -> nn.Module:
+        """Initialize and prepare the neural network model."""
+        if self.config.architecture != "HN":
+            raise ValueError(f"Unsupported architecture: {self.config.architecture}")
+            
+        model = nn.DataParallel(HN(), device_ids=[0]).to(self.device)
+        return model
+
+    def _init_datasets(self) -> None:
+        """Initialize training and validation datasets."""
+        self.train_dataset = Dataset(train=True, mode='color', 
+                                   data_path=self.config.data_path)
+        self.val_dataset = Dataset(train=False, mode='color', 
+                                 data_path=self.config.data_path)
+        
+        self.train_loader = DataLoader(
+            dataset=self.train_dataset,
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            num_workers=0
+        )
+
+    def _apply_watermark(
+        self, 
+        img: torch.Tensor, 
+        seed: Optional[int] = None,
+        variant_choice: Optional[int] = None
+    ) -> Tuple[torch.Tensor, int]:
+        """Apply a random watermark to the input image.
+        
+        Args:
+            img: Input image tensor
+            seed: Random seed for reproducible watermark application
+            variant_choice: Specific watermark variant to use (if None, chosen randomly)
+            
+        Returns:
+            Tuple of (watermarked image, variant choice used)
+        """
+        variants = [
+            {
+                'watermark_id': 'logo_ppco',
+                'occupancy': 0,
+                'scale': 1.0,
+                'alpha': random.uniform(0.33, 1),
+                'position': 'random',
+                'application_type': 'stamp',
+                'same_random_wm_seed': seed if seed is not None else 0,
+                'self_supervision': True,
+            },
+            {
+                'watermark_id': 'map_43',
+                'occupancy': 0,
+                'scale': 0.5,
+                'position': 'random',
+                'application_type': 'map',
+                'artifacts_config': ArtifactsConfig(
+                    alpha=random.uniform(0.44, 0.88),
+                    intensity=random.uniform(1.00, 2.00),
+                    kernel_size=random.choice([7, 11, 15]),
+                ),
+                'self_supervision': True,
+            }
+        ]
+        
+        if variant_choice is None:
+            variant_choice = random.randint(0, len(variants)-1)
+            
+        watermarked_img = self.watermark_manager.add_watermark_generic(
+            img, 
+            **variants[variant_choice]
+        )
+        return watermarked_img, variant_choice
+
+    def _adjust_learning_rate(self, epoch: int) -> None:
+        """Adjust learning rate based on epoch."""
+        current_lr = (self.config.initial_lr 
+                     if epoch < self.config.milestone 
+                     else self.config.initial_lr / 10.)
+        
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = current_lr
+
+    def _train_step(
+        self, 
+        img: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, float, float]:
+        """Execute a single training step.
+        
+        Args:
+            img: Input image batch
+            
+        Returns:
+            Tuple of (output image, target image, loss value, PSNR value)
+        """
+        self.model.train()
+        self.optimizer.zero_grad()
+
+        random_seed = random.getrandbits(128)
+        watermarked_img, variant_choice = self._apply_watermark(img, random_seed)
+
+        target_img = (self._apply_watermark(img, random_seed, variant_choice)[0]
+                     if self.config.self_supervised else img)
+
+        watermarked_img = watermarked_img.to(self.device)
+        target_img = target_img.to(self.device)
+
+        output = self.model(watermarked_img)
+        
+        # Calculate losses
+        output_features = self.vgg_model(output)
+        target_features = self.vgg_model(target_img)
+        
+        reconstruction_loss = self.criterion(output, target_img) / watermarked_img.size()[0] * 2
+        
+        if self.config.use_perceptual_loss:
+            perceptual_loss = (0.024 * self.criterion(output_features, target_features) 
+                              / (target_features.size()[0] / 2))
+            total_loss = reconstruction_loss + perceptual_loss
+        else:
+            total_loss = reconstruction_loss
+
+        total_loss.backward()
+        self.optimizer.step()
+
+        # Calculate PSNR for monitoring
+        with torch.no_grad():
+            output = torch.clamp(self.model(watermarked_img), 0., 1.)
+            psnr = batch_PSNR(output, img.to(self.device), 1.)
+
+        return output, target_img, total_loss.item(), psnr
+
+    def validate(self, epoch: int) -> float:
+        """Run validation on the validation dataset.
+        
+        Args:
+            epoch: Current training epoch
+            
+        Returns:
+            Average PSNR value across validation set
+        """
+        self.model.eval()
+        total_psnr = 0
+
+        with torch.no_grad():
+            for i in range(len(self.val_dataset)):
+                img = torch.unsqueeze(self.val_dataset[i], 0)
+                
+                # Ensure dimensions are multiples of 32
+                _, _, w, h = img.shape
+                w, h = (int(dim // 32 * 32) for dim in (w, h))
+                img = img[:, :, :w, :h]
+                random.seed(i)
+                watermarked_img, _ = self._apply_watermark(img)
+                img, watermarked_img = img.to(self.device), watermarked_img.to(self.device)
+                
+                output = torch.clamp(self.model(watermarked_img), 0., 1.)
+                total_psnr += batch_PSNR(output, img, 1.)
+
+        avg_psnr = total_psnr / len(self.val_dataset)
+        self.writer.add_scalar("PSNR/val", avg_psnr, epoch + 1)
+        return avg_psnr
+
+    def train(self) -> None:
+        """Execute the complete training pipeline."""
+        print(f'Training on {len(self.train_dataset)} samples')
+        
+        step = 0
+        for epoch in range(self.config.epochs):
+            self._adjust_learning_rate(epoch)
+            
+            for i, img in enumerate(self.train_loader):
+                output, target, loss, psnr = self._train_step(img)
+                
+                print(f"[epoch {epoch + 1}][{i + 1}/{len(self.train_loader)}] "
+                      f"loss: {loss:.4f} PSNR_train: {psnr:.4f}")
+                
+                if step % 10 == 0:
+                    self.writer.add_scalar("PSNR/train", psnr, step)
+                    self.writer.add_scalar("Loss/train", loss, step)
+                step += 1
+
+            # Save model and validate after each epoch
+            torch.save(
+                self.model.state_dict(), 
+                Path(self.config.model_output_path) / f"{self.config.model_name}_{epoch:03}.pth"
+            )
+            random.seed("validation")
+            val_psnr = self.validate(epoch)
+            random.seed()
+            print(f"\n[epoch {epoch + 1}] PSNR_val: {val_psnr:.4f}")
+
+        self.writer.close()
 
 
 def main():
-    print('Loading dataset ...\n')
-    dataset_train = Dataset(train=True, mode='color',
-                            data_path=config['data_path'])
-    dataset_val = Dataset(train=False, mode='color',
-                          data_path=config['data_path'])
-    loader_train = DataLoader(
-        dataset=dataset_train, num_workers=0, batch_size=opt.batchSize, shuffle=True)  # 4
-    print("# of training samples: %d\n" % int(len(dataset_train)))
-
-    # load network
-    if opt.net == "HN":
-        net = HN()
-    else:
-        assert False
-
-    writer = SummaryWriter("runs/" + tensorboard_name)
-
-    model_vgg = load_froze_vgg16()
-    device_ids = [0]
-    model = nn.DataParallel(net, device_ids=device_ids).to(device)
-
-    # load loss function
-    if opt.loss == "L2":
-        criterion = nn.MSELoss(reduction='sum')
-    else:
-        criterion = nn.L1Loss(reduction='sum')
-
-    criterion.to(device)
-
-    optimizer = optim.Adam(model.parameters(), lr=opt.lr)
-    step = 0
-
-    wmm = WatermarkManager(
-        data_path=config['data_path'] + '/watermarks',
-        swap_blue_red_channels=True
+    """Entry point for training the watermark removal model."""
+    yaml_config = get_config('configs/config.yaml')
+    config = TrainingConfig(
+        model_output_path=yaml_config['train_model_out_path_SWCNN'],
+        data_path=yaml_config['data_path'],
+        batch_size=32,
     )
-
-    artifacts_config = ArtifactsConfig()
-
-    def add_watermark_train(img, seed: Optional[int] = None, choice: Optional[int] = None):
-        variants = []
-        variants.append({
-            'watermark_id': 'logo_ppco',
-            'occupancy': 0,
-            'scale': 1.0,
-            'alpha': random.uniform(0.33, 1),
-            'position': 'random',
-            'application_type': 'stamp',
-            'same_random_wm_seed': seed if seed is not None else 0,
-            'self_supervision': True,
-        })
-        variants.append({
-            'watermark_id': 'map_43',
-            'occupancy': 0,
-            'scale': 0.5,  # Can also be a tuple like (0.45, 0.55)
-            'position': 'random',
-            'application_type': 'map',
-            'artifacts_config': ArtifactsConfig(
-                alpha=random.uniform(0.44, 0.88),
-                intensity=random.uniform(1.00, 2.00),
-                kernel_size=random.choice([7, 11, 15]),
-            ),
-            'self_supervision': True,
-        })
-        if choice is None:
-            choice = random.randint(0, len(variants)-1)
-        return wmm.add_watermark_generic(img, **variants[choice]), choice
-
-    for epoch in range(opt.epochs):
-        if epoch < opt.milestone:
-            current_lr = opt.lr
-        else:
-            current_lr = opt.lr / 10.
-        # set learning rate
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = current_lr
-        print('learning rate %f' % current_lr)
-        # train
-        for i, data in enumerate(loader_train, 0):
-            # training step
-            model.train()
-            model.zero_grad()
-            optimizer.zero_grad()
-            img_train = data
-
-            random.seed()
-            random_seed = random.getrandbits(128)
-            # imgn_train = add_watermark_generic(img_train, 0, True, random_img, alpha=opt.alpha)
-            imgn_train, choice = add_watermark_train(img_train, random_seed)
-
-            # plt.imshow(imgn_train[0].permute(1, 2, 0))
-            # plt.show()
-
-            if opt.self_supervised == "True":
-                imgn_train_2, _ = add_watermark_train(
-                    img_train, random_seed, choice=choice)
-            else:
-                imgn_train_2 = img_train
-
-            imgn_train = torch.Tensor(imgn_train)
-            imgn_train_2 = torch.Tensor(imgn_train_2)
-            img_train, imgn_train = img_train.to(device), imgn_train.to(device)
-            imgn_train_2 = imgn_train_2.to(device)
-            if opt.net == "FFDNet":
-                noise_sigma = 0 / 255.
-                noise_sigma = torch.FloatTensor(
-                    np.array([noise_sigma for _ in range(img_train.shape[0])]))
-                # TODO: check if it needs to track gradients, ensure requires_grad=True is set on the tensor before removing Variable()
-                noise_sigma = Variable(noise_sigma)
-                noise_sigma = noise_sigma.to(device)
-                out_train = model(imgn_train, noise_sigma)
-            else:
-                noise_sigma = None
-                out_train = model(imgn_train)
-            feature_out = model_vgg(out_train)
-            feature_img = model_vgg(imgn_train_2)
-
-            if opt.PN == "True":
-                loss = (1.0 * criterion(out_train, imgn_train_2) / imgn_train.size()[
-                    0] * 2) + (0.024 * criterion(feature_out, feature_img) / (feature_img.size()[0] / 2))
-            else:
-                loss = (1.0 * criterion(out_train, img_train) / imgn_train.size()[
-                    0] * 2) + (0.0 * criterion(feature_out, feature_img) / (feature_img.size()[0] / 2))
-            loss.backward()
-            optimizer.step()
-            # results
-            model.eval()
-            if opt.net == "FFDNet":
-                out_train = torch.clamp(model(imgn_train, noise_sigma), 0., 1.)
-            else:
-                out_train = torch.clamp(model(imgn_train), 0., 1.)
-            psnr_train = batch_PSNR(out_train, img_train, 1.)
-            print("[epoch %d][%d/%d] loss: %.4f PSNR_train: %.4f" %
-                  (epoch + 1, i + 1, len(loader_train), loss.item(), psnr_train))
-            # Call this for debugging after a step to show all training-images with their watermarks
-            # wmm.preview_manager.show_pools()
-            step += 1
-            if step % 10 == 0:
-                writer.add_scalar("PSNR", psnr_train, step)
-                writer.add_scalar("loss", loss.item(), step)
-
-        # the end of each epoch
-        model.eval()
-        # Save the trained network parameters
-        torch.save(model.state_dict(), os.path.join(opt.outf, model_name))
-        # validate
-        psnr_val = 0
-        with torch.no_grad():
-            for k in range(len(dataset_val)):
-                img_val = torch.unsqueeze(dataset_val[k], 0)
-                # Cut the picture into multiples of 32
-                _, _, w, h = img_val.shape
-                w = int(int(w / 32) * 32)
-                h = int(int(h / 32) * 32)
-                img_val = img_val[:, :, 0:w, 0:h]
-                imgn_val, _ = add_watermark_train(img_val)
-                # img_val = torch.Tensor(img_val)
-                # imgn_val = torch.Tensor(imgn_val)
-                with torch.no_grad():
-                    img_val, imgn_val = img_val.to(device), imgn_val.to(device)
-                if opt.net == "FFDNet":
-                    noise_sigma = 0 / 255.
-                    noise_sigma = torch.FloatTensor(
-                        np.array([noise_sigma for idx in range(img_val.shape[0])]))
-                    noise_sigma = Variable(noise_sigma)
-                    noise_sigma = noise_sigma.to(device)
-                    out_val = torch.clamp(model(imgn_val, noise_sigma), 0., 1.)
-                else:
-                    out_val = torch.clamp(model(imgn_val), 0., 1.)
-                psnr_val += batch_PSNR(out_val, img_val, 1.)
-            psnr_val /= len(dataset_val)
-            writer.add_scalar("PSNR_val", psnr_val, epoch + 1)
-            print("\n[epoch %d] PSNR_val: %.4f" % (epoch + 1, psnr_val))
-    writer.close()
+    
+    trainer = WatermarkCleaner(config)
+    trainer.train()
 
 
 if __name__ == "__main__":
