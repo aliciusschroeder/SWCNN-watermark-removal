@@ -230,9 +230,9 @@ def main():
                 w = int(int(w / 32) * 32)
                 h = int(int(h / 32) * 32)
                 img_val = img_val[:, :, 0:w, 0:h]
-                imgn_val = add_watermark_train(img_val)
-                img_val = torch.Tensor(img_val)
-                imgn_val = torch.Tensor(imgn_val)
+                imgn_val, _ = add_watermark_train(img_val)
+                # img_val = torch.Tensor(img_val)
+                # imgn_val = torch.Tensor(imgn_val)
                 with torch.no_grad():
                     img_val, imgn_val = img_val.to(device), imgn_val.to(device)
                 if opt.net == "FFDNet":
