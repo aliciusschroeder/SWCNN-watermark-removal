@@ -69,7 +69,9 @@ class WatermarkCleaner:
 
     def __init__(self, config: TrainingConfig):
         self.config = config
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() 
+                                   else "cpu")
+        print(f"Using device: {self.device.type}")
         self._setup_environment()
         self._init_components()
 
@@ -86,7 +88,8 @@ class WatermarkCleaner:
                          else nn.L1Loss(reduction='sum'))
         self.criterion.to(self.device)
         
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.initial_lr)
+        self.optimizer = optim.Adam(self.model.parameters(), 
+                                    lr=self.config.initial_lr)
         self.writer = SummaryWriter(f"runs/{self.config.model_name}")
         
         self.watermark_manager = WatermarkManager(
@@ -257,6 +260,16 @@ class WatermarkCleaner:
         avg_psnr = total_psnr / len(self.val_dataset)
         self.writer.add_scalar("PSNR/val", avg_psnr, epoch + 1)
         return avg_psnr
+    
+    def _save_model(self, epoch: int) -> None:
+        """Save the current model state to disk."""
+        pathname = Path(self.config.model_output_path) / f"{self.config.model_name}_{epoch:03}.pth"
+        torch.save(
+            {
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'epoch': epoch + 1
+        }, pathname)
 
     def train(self) -> None:
         """Execute the complete training pipeline."""
@@ -278,10 +291,7 @@ class WatermarkCleaner:
                 step += 1
 
             # Save model and validate after each epoch
-            torch.save(
-                self.model.state_dict(), 
-                Path(self.config.model_output_path) / f"{self.config.model_name}_{epoch:03}.pth"
-            )
+            self._save_model(epoch)
             random.seed("validation")
             val_psnr = self.validate(epoch)
             random.seed()
@@ -296,7 +306,7 @@ def main():
     config = TrainingConfig(
         model_output_path=yaml_config['train_model_out_path_SWCNN'],
         data_path=yaml_config['data_path'],
-        batch_size=32,
+        batch_size=8,
     )
     
     trainer = WatermarkCleaner(config)

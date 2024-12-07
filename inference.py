@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 from models import HN
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="SWCNN Inference Script")
     parser.add_argument('--config', type=str, default='configs/config.yaml',
@@ -30,9 +31,10 @@ def parse_args():
                         help="Device to run the model on. Options: 'cuda', 'cpu'.")
     return parser.parse_args()
 
+
 def load_model(model_path, device):
     """
-    Loads the trained model from the specified path.
+    Loads the trained model from the specified path, supporting both legacy (only weight) and new (weights, optimizer, epoch) formats.
 
     Args:
         model_path (str): Path to the .pth model file.
@@ -46,23 +48,23 @@ def load_model(model_path, device):
 
     # Initialize the model architecture
     model = HN()
-    
+
     # Load the state dictionary
-    state_dict = torch.load(model_path, map_location=device)
-    
-    # If the model was trained using DataParallel, remove the 'module.' prefix
-    new_state_dict = {}
-    for k, v in state_dict.items():
-        if k.startswith('module.'):
-            new_state_dict[k[7:]] = v
-        else:
-            new_state_dict[k] = v
-    
-    model.load_state_dict(new_state_dict, strict=True)
+    checkpoint = torch.load(model_path, map_location=device)
+
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        print("Detected new checkpoint format.")
+        model_state_dict = checkpoint['model_state_dict']
+    else:
+        print("Detected legacy checkpoint format.")
+        model_state_dict = checkpoint
+
+    model.load_state_dict(model_state_dict, strict=True)
     model.to(device)
     model.eval()
     print(f"Model loaded successfully from {model_path}")
     return model
+
 
 def pad_image(image, multiple=32):
     """
@@ -81,8 +83,10 @@ def pad_image(image, multiple=32):
     pad_w = (multiple - w % multiple) if w % multiple != 0 else 0
 
     # Apply padding (use reflect padding to minimize border artifacts)
-    padded_image = cv2.copyMakeBorder(image, 0, pad_h, 0, pad_w, cv2.BORDER_REFLECT)
+    padded_image = cv2.copyMakeBorder(
+        image, 0, pad_h, 0, pad_w, cv2.BORDER_REFLECT)
     return padded_image, (0, pad_w, 0, pad_h)
+
 
 def remove_padding(image, pad):
     """
@@ -100,6 +104,7 @@ def remove_padding(image, pad):
         return image
     h, w = image.shape[:2]
     return image[0:h - pad_bottom, 0:w - pad_right]
+
 
 def preprocess_image(image_path, device):
     """
@@ -121,7 +126,7 @@ def preprocess_image(image_path, device):
     image_bgr = cv2.imread(image_path, cv2.IMREAD_COLOR)
     if image_bgr is None:
         raise ValueError(f"Failed to read the image from {image_path}")
-    
+
     original_size = image_bgr.shape[:2]  # (H, W)
 
     # Convert BGR to RGB
@@ -134,10 +139,12 @@ def preprocess_image(image_path, device):
     padded_image, pad = pad_image(image_normalized, multiple=32)
 
     # Convert to tensor and rearrange dimensions to C x H x W
-    input_tensor = torch.from_numpy(padded_image).permute(2, 0, 1).unsqueeze(0)  # Shape: 1 x C x H x W
+    input_tensor = torch.from_numpy(padded_image).permute(
+        2, 0, 1).unsqueeze(0)  # Shape: 1 x C x H x W
     input_tensor = input_tensor.to(device)
 
     return input_tensor, original_size, pad
+
 
 def postprocess_image(output_tensor, original_size, pad):
     """
@@ -171,6 +178,7 @@ def postprocess_image(output_tensor, original_size, pad):
 
     return output_bgr
 
+
 def main():
     args = parse_args()
 
@@ -182,18 +190,23 @@ def main():
 
     model = load_model(args.model_path, device)
 
-    input_tensor, original_size, pad = preprocess_image(args.input_image, device)
-    print(f"Input image loaded and preprocessed. Original size: {original_size}, Padded: {input_tensor.shape[2:]}")
+    input_tensor, original_size, pad = preprocess_image(
+        args.input_image, device)
+    print(f"Input image loaded and preprocessed."+
+          f"Original size: {original_size},"+
+          f"Padded: {input_tensor.shape[2:]}")
 
     with torch.no_grad():
         output_tensor = model(input_tensor)
         print("Inference completed.")
 
     output_image = postprocess_image(output_tensor, original_size, pad)
-    print(f"Postprocessing completed. Saving output image to {args.output_image}")
+    print(f"Postprocessing completed. Saving "+
+          f"output image to {args.output_image}")
 
     cv2.imwrite(args.output_image, output_image)
     print("Output image saved successfully.")
+
 
 if __name__ == "__main__":
     main()
