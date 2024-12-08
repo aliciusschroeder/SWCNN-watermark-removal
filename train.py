@@ -76,11 +76,24 @@ class TrainingConfig:
         return "_".join(components)
 
 
+@dataclass
+class TensorBoardConfig:
+    """Configuration parameters for Tensorboard logging."""
+    log_dir: str = "output/runs"
+    log_detailed_losses: bool = False
+    log_parameter_histograms: bool = False
+
+
 class WatermarkCleaner:
     """Manages the training of watermark removal neural networks."""
 
-    def __init__(self, config: TrainingConfig):
+    def __init__(
+            self, 
+            config: TrainingConfig, 
+            tensorboard_config: TensorBoardConfig = TensorBoardConfig()
+        ):
         self.config = config
+        self.tb_config = tensorboard_config
         self.device = torch.device("cuda" if torch.cuda.is_available() 
                                    else "cpu")
         print(f"Using device: {self.device.type}")
@@ -265,7 +278,7 @@ class WatermarkCleaner:
         total_loss.backward()
 
         # Log parameter gradients before clipping
-        if self.writer is not None:
+        if self.writer is not None and self.tb_config.log_parameter_histograms:
             for name, param in self.model.named_parameters():
                 if param.grad is not None:
                     self.writer.add_histogram(f"Gradients_before_clip/{name}", 
@@ -341,9 +354,16 @@ class WatermarkCleaner:
     global_step: int
 ) -> None:
         """Log detailed training metrics and visualizations to tensorboard."""
-        # Log all loss components
-        for loss_name, loss_value in losses.items():
-            self.writer.add_scalar(f"Loss/{loss_name}", loss_value, global_step)
+        if self.writer is None:
+            return
+        
+        if self.tb_config.log_detailed_losses:
+            # Log all loss components
+            for loss_name, loss_value in losses.items():
+                self.writer.add_scalar(f"Loss/{loss_name}", loss_value, global_step)
+        else:
+            # Log only total loss
+            self.writer.add_scalar("Loss/total", losses['total'], global_step)
         
         # Log learning rate
         current_lr = self.optimizer.param_groups[0]['lr']
@@ -374,8 +394,9 @@ class WatermarkCleaner:
             )
             
             # Log histograms of model parameters
-            for name, param in self.model.named_parameters():
-                self.writer.add_histogram(f"Parameters/{name}", param, global_step)
+            if self.tb_config.log_parameter_histograms:
+                for name, param in self.model.named_parameters():
+                    self.writer.add_histogram(f"Parameters/{name}", param, global_step)
 
     def train(self) -> None:
         """Execute the complete training pipeline."""
