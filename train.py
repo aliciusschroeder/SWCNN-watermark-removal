@@ -19,7 +19,6 @@ The training process includes:
 # TODO(high): Think about a more sophisticated LR scheduler, as exponential loss reduction doesn't seem to stop before epoch 40 @ 79 batches @ 8 batch size
 # TODO(medium): Implement validation loss calculation
 # TODO(medium): See if we can use the same name for images in Tensorboard to compare them by steps slider instead of scrolling through batches
-# TODO(medium): Unify naming conventions for Tensorboard scalars
 # TODO(medium): Look out for possible performance improvements in the training loop
 # TODO(medium): Implement a resume training feature
 # TODO(medium): Develop a fine-tuning strategy
@@ -326,7 +325,7 @@ class WatermarkCleaner:
                 total_psnr += batch_PSNR(output, img, 1.)
 
         avg_psnr = total_psnr / len(self.val_dataset)
-        self.writer.add_scalar("PSNR/val", avg_psnr, epoch + 1)
+        self.writer.add_scalar("Epoch_Metrics_Val/PSNR_avg", avg_psnr, epoch + 1)
         return avg_psnr
     
     def _save_model(self, epoch: int, is_best: bool = False) -> None:
@@ -357,20 +356,16 @@ class WatermarkCleaner:
         if self.writer is None:
             return
         
-        if self.tb_config.log_detailed_losses:
-            # Log all loss components
-            for loss_name, loss_value in losses.items():
-                self.writer.add_scalar(f"Loss/{loss_name}", loss_value, global_step)
-        else:
-            # Log only total loss
-            self.writer.add_scalar("Loss/total", losses['total'], global_step)
+        for loss_name, loss_value in losses.items():
+            if self.tb_config.log_detailed_losses or loss_name == 'total':
+                self.writer.add_scalar(f"Loss_Train/loss_{loss_name}", loss_value, global_step)
         
         # Log learning rate
         current_lr = self.optimizer.param_groups[0]['lr']
         self.writer.add_scalar('Learning_Rate', current_lr, global_step)
         
         # Log PSNR
-        self.writer.add_scalar("Metrics/PSNR_train", psnr, global_step)
+        self.writer.add_scalar("PSNR_Train/PSNR", psnr, global_step)
         
         # Log gradient norms
         for name, param in self.model.named_parameters():
@@ -388,7 +383,7 @@ class WatermarkCleaner:
             ], normalize=True, nrow=3)
             
             self.writer.add_image(
-                f'Images/epoch_{epoch}_batch_{batch_step}',
+                f'Images_Train/epoch_{epoch}_batch_{batch_step}',
                 img_grid,
                 global_step
             )
@@ -431,21 +426,17 @@ class WatermarkCleaner:
                       f"loss: {losses['total']:.4f} PSNR_train: {psnr:.4f}")
                 
                 self.global_step += 1
-                
-                """ if step % 10 == 0:
-                    self.writer.add_scalar("PSNR/train", psnr, step)
-                    self.writer.add_scalar("Loss/train", loss, step)
-                step += 1 """
 
             # Log epoch-level metrics
             num_batches = len(self.train_loader)
             for loss_name, loss_sum in epoch_losses.items():
-                avg_loss = loss_sum / num_batches
-                self.writer.add_scalar(f"Epoch_Metrics/{loss_name}_avg",
-                                        avg_loss, epoch + 1)
-                
+                if self.tb_config.log_detailed_losses or loss_name == 'total':
+                    avg_loss = loss_sum / num_batches
+                    self.writer.add_scalar(f"Epoch_Metrics_Train/{loss_name}_loss_avg",
+                                            avg_loss, epoch + 1)
+
             avg_epoch_psnr = epoch_psnr / num_batches
-            self.writer.add_scalar("Metrics/PSNR_avg", avg_epoch_psnr, epoch + 1)
+            self.writer.add_scalar("Epoch_Metrics_Train/PSNR_avg", avg_epoch_psnr, epoch + 1)
 
             # Validation
             random.seed("validation")
