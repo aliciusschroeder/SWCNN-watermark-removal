@@ -133,7 +133,8 @@ class WatermarkCleaner:
             dataset=self.train_dataset,
             batch_size=self.config.batch_size,
             shuffle=True,
-            num_workers=0
+            num_workers=8,
+            pin_memory=True
         )
 
 
@@ -177,7 +178,6 @@ class WatermarkCleaner:
         variants, weights = get_watermark_variations()
         
         if variant_choice is None:
-            # variant_choice = random.randint(0, len(variants)-1)
             variant_choice = random.choices(range(len(variants)), weights=weights, k=1)[0]
             
         watermarked_img = self.watermark_manager.add_watermark_generic(
