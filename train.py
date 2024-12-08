@@ -14,16 +14,12 @@ The training process includes:
 - Periodic validation on a separate dataset
 """
 
-# TODO(high): Train implicitly on edge cases (i.e. watermark is only partly at the edge of the image) and underrepresented map ranges (i.e. if the center differs from the rest of the map)
-# TODO(high): Generate deterministic watermarks for validation images and save their outputs to Tensorboard
+# TODO(high): --Generate deterministic watermarks for validation images-- (done!) and _save their outputs to Tensorboard_
 # TODO(high): Think about a more sophisticated LR scheduler, as exponential loss reduction doesn't seem to stop before epoch 40 @ 79 batches @ 8 batch size
 # TODO(medium): Implement validation loss calculation
-# TODO(medium): See if we can use the same name for images in Tensorboard to compare them by steps slider instead of scrolling through batches
 # TODO(medium): Look out for possible performance improvements in the training loop
 # TODO(medium): Implement a resume training feature
 # TODO(medium): Develop a fine-tuning strategy
-# TODO(medium): Log all time-series based on the number of steps and avoid using epoch numbers
-# TODO(medium): Calculate PSNR for input images as a baseline
 # TODO(low): Find out if activation statistics could help identify potential issues like vanishing/exploding gradients
 
 from dataclasses import dataclass
@@ -39,6 +35,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter # type: ignore
 
+from configs.watermark_variations import get_watermark_validation_variation, get_watermark_variations
 from dataset import Dataset
 from models import HN
 from utils.helper import get_config
@@ -178,7 +175,28 @@ class WatermarkCleaner:
         )
 
 
-    def _apply_watermark(
+    def _apply_watermark_val(
+            self,
+            img: torch.Tensor,
+    ) -> torch.Tensor:
+        """Apply a deterministic watermark to the input image for validation.
+        
+        Args:
+            img: Input image tensor
+            
+        Returns:
+            Watermarked image tensor
+        """
+        watermarked_img = self.watermark_manager.add_watermark_generic(
+            img,
+            self_supervision=self.config.self_supervised,
+            same_random_wm_seed=42,
+            **get_watermark_validation_variation()
+        )
+        return watermarked_img
+
+
+    def _apply_watermark_train(
         self, 
         img: torch.Tensor, 
         seed: Optional[int] = None,
@@ -194,31 +212,11 @@ class WatermarkCleaner:
         Returns:
             Tuple of (watermarked image, variant choice used)
         """
-        variants = [
-            {
-                'watermark_id': 'logo_ppco',
-                'occupancy': 0,
-                'scale': 1.0,
-                'alpha': random.uniform(0.33, 1),
-                'position': 'random',
-                'application_type': 'stamp',
-            },
-            {
-                'watermark_id': 'map_43',
-                'occupancy': 0,
-                'scale': 0.5,
-                'position': 'random',
-                'application_type': 'map',
-                'artifacts_config': ArtifactsConfig(
-                    alpha=random.uniform(0.55, 0.77),
-                    intensity=random.uniform(1.00, 2.00),
-                    kernel_size=random.choice([7, 11, 15]),
-                ),
-            }
-        ]
+        variants, weights = get_watermark_variations()
         
         if variant_choice is None:
-            variant_choice = random.randint(0, len(variants)-1)
+            # variant_choice = random.randint(0, len(variants)-1)
+            variant_choice = random.choices(range(len(variants)), weights=weights, k=1)[0]
             
         watermarked_img = self.watermark_manager.add_watermark_generic(
             img,
@@ -259,9 +257,9 @@ class WatermarkCleaner:
         self.optimizer.zero_grad()
 
         random_seed = random.getrandbits(128)
-        watermarked_img, variant_choice = self._apply_watermark(img, random_seed)
+        watermarked_img, variant_choice = self._apply_watermark_train(img, random_seed)
 
-        target_img = (self._apply_watermark(img, random_seed, variant_choice)[0]
+        target_img = (self._apply_watermark_train(img, random_seed, variant_choice)[0]
                      if self.config.self_supervised else img)
 
         watermarked_img = watermarked_img.to(self.device)
@@ -332,7 +330,7 @@ class WatermarkCleaner:
                 w, h = (int(dim // 32 * 32) for dim in (w, h))
                 img = img[:, :, :w, :h]
                 random.seed(i)
-                watermarked_img, _ = self._apply_watermark(img)
+                watermarked_img = self._apply_watermark_val(img)
                 img, watermarked_img = img.to(self.device), watermarked_img.to(self.device)
                 
                 output = torch.clamp(self.model(watermarked_img), 0., 1.)
