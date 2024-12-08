@@ -55,7 +55,7 @@ class TrainingConfig:
     epochs: int = 100
     milestone: int = 30  # Learning rate decay epoch
     initial_lr: float = 1e-3
-    model_output_path: str = "models/SWCNN"
+    model_output_path: str = "output/models"
     architecture: Literal["HN"] = "HN"
     loss_type: Literal["L1", "L2"] = "L1"
     self_supervised: bool = True
@@ -126,7 +126,7 @@ class WatermarkCleaner:
     def _setup_tensorboard(self) -> None:
         """Initialize Tensorboard logging for training monitoring."""
         current_time = datetime.now().strftime("%y-%m-%d-%H-%M")
-        self.writer = SummaryWriter(f"runs/{self.config.model_name}-{current_time}")
+        self.writer = SummaryWriter(f"{self.tb_config.log_dir}/{self.config.model_name}-{current_time}")
         # Log model architecture
         dummy_input = torch.randn(1, 3, 256, 256).to(self.device)
         self.writer.add_graph(self.model, dummy_input)

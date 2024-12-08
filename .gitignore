@@ -7,16 +7,13 @@ ENV/
 env.bak/
 venv.bak/
 
-# Tensorflow
-runs/
+# Tensorflow & Model Data
+output/
 tmp/
 
 # Training, Validation & Test Data
 data/**/*.[jp][pn]g
 data/*.h5
-
-# Model Data
-data/**/*.pth
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

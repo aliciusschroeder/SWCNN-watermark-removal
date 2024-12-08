@@ -1,3 +1,3 @@
 # Paths
 data_path: data
-train_model_out_path_SWCNN: data/models
+train_model_out_path_SWCNN: output/models
