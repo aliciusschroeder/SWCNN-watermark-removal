@@ -115,9 +115,9 @@ def get_watermark_variations():
         1, # logo_mreb
         1, # logo_mrlnb
         1, # logo_milios
-        3, # milios_map
-        1, # milios_map_edgecase
-        1, # milios_map_around_center
+        6, # milios_map
+        2, # milios_map_edgecase
+        2, # milios_map_around_center
     ]
     if len(variants) != len(weights):
         raise ValueError("The number of watermark variations and their weights must be the same.")
