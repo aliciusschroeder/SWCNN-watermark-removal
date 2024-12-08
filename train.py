@@ -22,10 +22,9 @@ The training process includes:
 # TODO(medium): Develop a fine-tuning strategy
 # TODO(low): Find out if activation statistics could help identify potential issues like vanishing/exploding gradients
 
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Literal, Optional, Tuple
+from typing import Dict, Optional, Tuple
 import random
 
 import torch
@@ -35,6 +34,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter # type: ignore
 
+from configs.tensorboard import TensorBoardConfig
+from configs.training import TrainingConfig
 from configs.watermark_variations import get_watermark_validation_variation, get_watermark_variations
 from dataset import Dataset
 from models import HN
@@ -42,46 +43,6 @@ from utils.helper import get_config
 from utils.train_preparation import load_froze_vgg16
 from utils.validation import batch_PSNR
 from utils.watermark import WatermarkManager, ArtifactsConfig
-
-
-@dataclass
-class TrainingConfig:
-    """Configuration parameters for the SWCNN training process."""
-    batch_size: int = 8
-    num_layers: int = 17
-    epochs: int = 100
-    milestone: int = 30  # Learning rate decay epoch
-    initial_lr: float = 1e-3
-    model_output_path: str = "output/models"
-    architecture: Literal["HN"] = "HN"
-    loss_type: Literal["L1", "L2"] = "L1"
-    self_supervised: bool = True
-    use_perceptual_loss: bool = True
-    gpu_id: str = "0"
-    data_path: str = "data"
-
-    @property
-    def model_name(self) -> str:
-        """Generate a descriptive model name based on configuration."""
-        components = [
-            self.architecture,
-            "per" if self.use_perceptual_loss else "woper",
-            self.loss_type,
-            "n2n" if self.self_supervised else "n2c",
-        ]
-        return "_".join(components)
-
-
-@dataclass
-class TensorBoardConfig:
-    """Configuration parameters for Tensorboard logging."""
-    log_dir: str = "output/runs"
-    log_detailed_losses: bool = False
-    log_parameter_histograms: bool = False
-    log_gradient_norms: bool = False
-    save_checkpoint_nth_epoch: int = 5 # exclusive of epoch 0
-    save_images_nth_epoch: int = 5 # exclusive of epoch 0
-    save_images_nth_batch: int = 100 # inclusive of batch 0
 
 
 class WatermarkCleaner:
