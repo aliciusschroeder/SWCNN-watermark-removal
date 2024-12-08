@@ -81,6 +81,8 @@ class TensorBoardConfig:
     log_dir: str = "output/runs"
     log_detailed_losses: bool = False
     log_parameter_histograms: bool = False
+    log_gradient_norms: bool = False
+    save_nth_checkpoint: int = 1
 
 
 class WatermarkCleaner:
@@ -100,10 +102,12 @@ class WatermarkCleaner:
         self._init_components()
         self._setup_tensorboard()
 
+
     def _setup_environment(self) -> None:
         """Configure CUDA environment and create output directories."""
         torch.cuda.set_device(int(self.config.gpu_id))
         Path(self.config.model_output_path).mkdir(parents=True, exist_ok=True)
+
 
     def _init_components(self) -> None:
         """Initialize model, optimizer, loss functions, and data loaders."""
@@ -147,6 +151,7 @@ class WatermarkCleaner:
         }
         self.writer.add_hparams(hparams, {})
 
+
     def _create_model(self) -> nn.Module:
         """Initialize and prepare the neural network model."""
         if self.config.architecture != "HN":
@@ -154,6 +159,7 @@ class WatermarkCleaner:
             
         model = nn.DataParallel(HN(), device_ids=[0]).to(self.device)
         return model
+
 
     def _init_datasets(self) -> None:
         """Initialize training and validation datasets."""
@@ -168,6 +174,7 @@ class WatermarkCleaner:
             shuffle=True,
             num_workers=0
         )
+
 
     def _apply_watermark(
         self, 
@@ -193,8 +200,6 @@ class WatermarkCleaner:
                 'alpha': random.uniform(0.33, 1),
                 'position': 'random',
                 'application_type': 'stamp',
-                'same_random_wm_seed': seed if seed is not None else 0,
-                'self_supervision': True,
             },
             {
                 'watermark_id': 'map_43',
@@ -203,11 +208,10 @@ class WatermarkCleaner:
                 'position': 'random',
                 'application_type': 'map',
                 'artifacts_config': ArtifactsConfig(
-                    alpha=random.uniform(0.44, 0.88),
+                    alpha=random.uniform(0.55, 0.77),
                     intensity=random.uniform(1.00, 2.00),
                     kernel_size=random.choice([7, 11, 15]),
                 ),
-                'self_supervision': True,
             }
         ]
         
@@ -215,10 +219,13 @@ class WatermarkCleaner:
             variant_choice = random.randint(0, len(variants)-1)
             
         watermarked_img = self.watermark_manager.add_watermark_generic(
-            img, 
+            img,
+            self_supervision=self.config.self_supervised,
+            same_random_wm_seed=seed,
             **variants[variant_choice]
         )
         return watermarked_img, variant_choice
+
 
     def _adjust_learning_rate(self, epoch: int) -> None:
         """Adjust learning rate based on epoch."""
@@ -228,6 +235,11 @@ class WatermarkCleaner:
         
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = current_lr
+
+        # Log learning rate
+        current_lr = self.optimizer.param_groups[0]['lr']
+        self.writer.add_scalar('Learning_Rate', current_lr, epoch + 1)
+
 
     def _train_step(
         self, 
@@ -283,7 +295,6 @@ class WatermarkCleaner:
                     self.writer.add_histogram(f"Gradients_before_clip/{name}", 
                                               param.grad, self.global_step)
 
-
         # Gradient clipping
         nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
@@ -295,6 +306,7 @@ class WatermarkCleaner:
             psnr = batch_PSNR(output, img.to(self.device), 1.)
 
         return output, target_img, losses, psnr
+
 
     def validate(self, epoch: int) -> float:
         """Run validation on the validation dataset.
@@ -328,8 +340,20 @@ class WatermarkCleaner:
         self.writer.add_scalar("Epoch_Metrics_Val/PSNR_avg", avg_psnr, epoch + 1)
         return avg_psnr
     
+
+    def _epoch_is_saveworthy(self, epoch: int, is_best: bool) -> bool:
+        """Determine if the current epoch should be saved to disk."""
+        is_nth_checkpoint = epoch % self.tb_config.save_nth_checkpoint == 0
+        is_last_epoch = epoch == self.config.epochs - 1
+        is_best = is_best and epoch > self.config.epochs // 20
+        return is_nth_checkpoint or is_best or is_last_epoch
+
+    
     def _save_model(self, epoch: int, is_best: bool = False) -> None:
         """Save the current model state to disk."""
+        if not self._epoch_is_saveworthy(epoch, is_best):
+            return
+
         filename = f"{self.config.model_name}_"
         filename += f"{epoch:03}"
         filename += "_best" if is_best else ""
@@ -340,7 +364,8 @@ class WatermarkCleaner:
             'optimizer_state_dict': self.optimizer.state_dict(),
             'epoch': epoch + 1
         }, pathname)
-    
+
+
     def _log_training_batch(
     self, 
     epoch: int, 
@@ -356,25 +381,23 @@ class WatermarkCleaner:
         if self.writer is None:
             return
         
+        # Log loss (components/total)
         for loss_name, loss_value in losses.items():
             if self.tb_config.log_detailed_losses or loss_name == 'total':
                 self.writer.add_scalar(f"Loss_Train/loss_{loss_name}", loss_value, global_step)
-        
-        # Log learning rate
-        current_lr = self.optimizer.param_groups[0]['lr']
-        self.writer.add_scalar('Learning_Rate', current_lr, global_step)
         
         # Log PSNR
         self.writer.add_scalar("PSNR_Train/PSNR", psnr, global_step)
         
         # Log gradient norms
-        for name, param in self.model.named_parameters():
-            if param.grad is not None:
-                grad_norm = param.grad.norm()
-                self.writer.add_scalar(f"Gradients/{name}_norm", grad_norm, global_step)
+        if self.tb_config.log_gradient_norms:
+            for name, param in self.model.named_parameters():
+                if param.grad is not None:
+                    grad_norm = param.grad.norm()
+                    self.writer.add_scalar(f"Gradients/{name}_norm", grad_norm, global_step)
         
         # Periodically log images
-        if batch_step % 100 == 0:
+        if batch_step % 100 == 0 and epoch % self.tb_config.save_nth_checkpoint == 0:
             # Create a grid of sample images
             img_grid = vutils.make_grid([
                 watermarked_img[0].cpu(),  # Input watermarked image
@@ -392,6 +415,7 @@ class WatermarkCleaner:
             if self.tb_config.log_parameter_histograms:
                 for name, param in self.model.named_parameters():
                     self.writer.add_histogram(f"Parameters/{name}", param, global_step)
+
 
     def train(self) -> None:
         """Execute the complete training pipeline."""
