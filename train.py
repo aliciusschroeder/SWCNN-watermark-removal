@@ -44,6 +44,7 @@ from utils.train_preparation import load_froze_vgg16
 from utils.validation import batch_PSNR
 from utils.watermark import WatermarkManager, ArtifactsConfig
 
+PRINT_DURING_TRAINING = False
 
 class WatermarkCleaner:
     """Manages the training of watermark removal neural networks."""
@@ -385,7 +386,6 @@ class WatermarkCleaner:
         self.global_step = 0
         best_psnr = 0.0
         
-        # step = 0
         for epoch in range(self.config.epochs):
             epoch_losses = {
                 'reconstruction': 0.0,
@@ -407,8 +407,9 @@ class WatermarkCleaner:
                     epoch, i, img, output, target, losses, psnr, self.global_step
                 )
                 
-                print(f"[epoch {epoch + 1}][{i + 1}/{len(self.train_loader)}] "
-                      f"loss: {losses['total']:.4f} PSNR_train: {psnr:.4f}")
+                if PRINT_DURING_TRAINING:
+                    print(f"[epoch {epoch + 1}][{i + 1}/{len(self.train_loader)}] "
+                        f"loss: {losses['total']:.4f} PSNR_train: {psnr:.4f}")
                 
                 self.global_step += 1
 
@@ -432,10 +433,11 @@ class WatermarkCleaner:
                 self._save_model(epoch, is_best=True)
             else:
                 self._save_model(epoch, is_best=False)
-            print(f"\n[epoch {epoch + 1}] "
-                  f"Avg_loss: {epoch_losses['total']/num_batches:.4f} "
-                  f"Avg_PSNR: {avg_epoch_psnr:.4f} "
-                  f"Val_PSNR: {val_psnr:.4f}")
+            if PRINT_DURING_TRAINING:
+                print(f"\n[epoch {epoch + 1}] "
+                    f"Avg_loss: {epoch_losses['total']/num_batches:.4f} "
+                    f"Avg_PSNR: {avg_epoch_psnr:.4f} "
+                    f"Val_PSNR: {val_psnr:.4f}")
 
         self.writer.close()
 
