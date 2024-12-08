@@ -31,6 +31,7 @@ import torch
 import torch.nn as nn
 import torchvision.utils as vutils
 import torch.optim as optim
+from torch import autocast, GradScaler # Mixed precision training can improve performance. If it causes problems, remove GradScaler/autocast related lines
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter # type: ignore
 
@@ -80,6 +81,8 @@ class WatermarkCleaner:
         
         self.optimizer = optim.Adam(self.model.parameters(), 
                                     lr=self.config.initial_lr)
+        
+        self.scaler = GradScaler() # Remove this line if not using mixed precision training
         
         self.watermark_manager = WatermarkManager(
             data_path=f"{self.config.data_path}/watermarks",
@@ -227,28 +230,31 @@ class WatermarkCleaner:
         watermarked_img = watermarked_img.to(self.device)
         target_img = target_img.to(self.device)
 
-        output = self.model(watermarked_img)
-        
-        # Calculate and track individual losses
-        losses = {}
+        # Use GradScaler/autocast for mixed precision training. Remove context manager if causing issues
+        with autocast(device_type='cuda'): 
+            output = self.model(watermarked_img)
+            
+            # Calculate and track individual losses
+            losses = {}
 
-        # Reconstruction loss
-        reconstruction_loss = self.criterion(output, target_img) / watermarked_img.size()[0] * 2
-        losses['reconstruction'] = reconstruction_loss.item()
-        
-        if self.config.use_perceptual_loss:
-            output_features = self.vgg_model(output)
-            target_features = self.vgg_model(target_img)
-            perceptual_loss = (0.024 * self.criterion(output_features, target_features) 
-                              / (target_features.size()[0] / 2))
-            losses['perceptual'] = perceptual_loss.item()
-            total_loss = reconstruction_loss + perceptual_loss
-        else:
-            total_loss = reconstruction_loss
+            # Reconstruction loss
+            reconstruction_loss = self.criterion(output, target_img) / watermarked_img.size()[0] * 2
+            losses['reconstruction'] = reconstruction_loss.item()
+            
+            if self.config.use_perceptual_loss:
+                output_features = self.vgg_model(output)
+                target_features = self.vgg_model(target_img)
+                perceptual_loss = (0.024 * self.criterion(output_features, target_features) 
+                                / (target_features.size()[0] / 2))
+                losses['perceptual'] = perceptual_loss.item()
+                total_loss = reconstruction_loss + perceptual_loss
+            else:
+                total_loss = reconstruction_loss
 
-        losses['total'] = total_loss.item()
+            losses['total'] = total_loss.item()
 
-        total_loss.backward()
+        # total_loss.backward() # Use this line if not using mixed precision training
+        self.scaler.scale(total_loss).backward()
 
         # Log parameter gradients before clipping
         if self.writer is not None and self.tb_config.log_parameter_histograms:
@@ -260,12 +266,15 @@ class WatermarkCleaner:
         # Gradient clipping
         nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
-        self.optimizer.step()
+        # self.optimizer.step() # Use this line if not using mixed precision training
+        self.scaler.step(self.optimizer)
 
         # Calculate PSNR
         with torch.no_grad():
             output = torch.clamp(self.model(watermarked_img), 0., 1.)
             psnr = batch_PSNR(output, img.to(self.device), 1.)
+
+        self.scaler.update() # Remove this line if not using mixed precision training
 
         return output, target_img, losses, psnr
 
