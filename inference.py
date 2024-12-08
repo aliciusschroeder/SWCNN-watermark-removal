@@ -52,6 +52,8 @@ def load_model(model_path, device):
     # Load the state dictionary
     checkpoint = torch.load(model_path, map_location=device)
 
+    # TODO: Check if the model was trained using DataParallel and wether removal of 'module.' prefix is needed
+
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         print("Detected new checkpoint format.")
         model_state_dict = checkpoint['model_state_dict']

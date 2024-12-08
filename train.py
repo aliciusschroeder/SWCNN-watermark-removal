@@ -14,12 +14,24 @@ The training process includes:
 - Periodic validation on a separate dataset
 """
 
+# TODO(high): Train implicitly on edge cases (i.e. watermark is only partly at the edge of the image) and underrepresented map ranges (i.e. if the center differs from the rest of the map)
+# TODO(high): Generate deterministic watermarks for validation images and save their outputs to Tensorboard
+# TODO(high): Think about a more sophisticated LR scheduler, as exponential loss reduction doesn't seem to stop before epoch 40 @ 79 batches @ 8 batch size
+# TODO(medium): Implement validation loss calculation
+# TODO(medium): See if we can use the same name for images in Tensorboard to compare them by steps slider instead of scrolling through batches
+# TODO(medium): Unify naming conventions for Tensorboard scalars
+# TODO(medium): Look out for possible performance improvements in the training loop
+# TODO(medium): Implement a resume training feature
+# TODO(medium): Develop a fine-tuning strategy
+# TODO(medium): Log all time-series based on the number of steps and avoid using epoch numbers
+# TODO(medium): Calculate PSNR for input images as a baseline
+# TODO(low): Find out if activation statistics could help identify potential issues like vanishing/exploding gradients
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Tuple
 import random
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
