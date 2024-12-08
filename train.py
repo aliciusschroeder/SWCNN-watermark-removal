@@ -82,7 +82,9 @@ class TensorBoardConfig:
     log_detailed_losses: bool = False
     log_parameter_histograms: bool = False
     log_gradient_norms: bool = False
-    save_nth_checkpoint: int = 1
+    save_checkpoint_nth_epoch: int = 5 # exclusive of epoch 0
+    save_images_nth_epoch: int = 5 # exclusive of epoch 0
+    save_images_nth_batch: int = 100 # inclusive of batch 0
 
 
 class WatermarkCleaner:
@@ -343,7 +345,7 @@ class WatermarkCleaner:
 
     def _epoch_is_saveworthy(self, epoch: int, is_best: bool) -> bool:
         """Determine if the current epoch should be saved to disk."""
-        is_nth_checkpoint = epoch % self.tb_config.save_nth_checkpoint == 0
+        is_nth_checkpoint = epoch % self.tb_config.save_checkpoint_nth_epoch == 0 and epoch > 0
         is_last_epoch = epoch == self.config.epochs - 1
         is_best = is_best and epoch > self.config.epochs // 20
         return is_nth_checkpoint or is_best or is_last_epoch
@@ -397,7 +399,7 @@ class WatermarkCleaner:
                     self.writer.add_scalar(f"Gradients/{name}_norm", grad_norm, global_step)
         
         # Periodically log images
-        if batch_step % 100 == 0 and epoch % self.tb_config.save_nth_checkpoint == 0:
+        if batch_step % self.tb_config.save_images_nth_batch == 0 and epoch % self.tb_config.save_images_nth_epoch == 0 and epoch > 0:
             # Create a grid of sample images
             img_grid = vutils.make_grid([
                 watermarked_img[0].cpu(),  # Input watermarked image
