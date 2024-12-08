@@ -28,12 +28,14 @@ The training process includes:
 # TODO(low): Find out if activation statistics could help identify potential issues like vanishing/exploding gradients
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Literal, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 import random
 
 import torch
 import torch.nn as nn
+import torchvision.utils as vutils
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter # type: ignore
@@ -54,7 +56,6 @@ class TrainingConfig:
     epochs: int = 100
     milestone: int = 30  # Learning rate decay epoch
     initial_lr: float = 1e-3
-    watermark_alpha: float = 0.6
     model_output_path: str = "models/SWCNN"
     architecture: Literal["HN"] = "HN"
     loss_type: Literal["L1", "L2"] = "L1"
@@ -71,7 +72,6 @@ class TrainingConfig:
             "per" if self.use_perceptual_loss else "woper",
             self.loss_type,
             "n2n" if self.self_supervised else "n2c",
-            f"alpha{self.watermark_alpha}"
         ]
         return "_".join(components)
 
@@ -86,6 +86,7 @@ class WatermarkCleaner:
         print(f"Using device: {self.device.type}")
         self._setup_environment()
         self._init_components()
+        self._setup_tensorboard()
 
     def _setup_environment(self) -> None:
         """Configure CUDA environment and create output directories."""
@@ -102,7 +103,6 @@ class WatermarkCleaner:
         
         self.optimizer = optim.Adam(self.model.parameters(), 
                                     lr=self.config.initial_lr)
-        self.writer = SummaryWriter(f"runs/{self.config.model_name}")
         
         self.watermark_manager = WatermarkManager(
             data_path=f"{self.config.data_path}/watermarks",
@@ -110,6 +110,30 @@ class WatermarkCleaner:
         )
         
         self._init_datasets()
+
+    def _setup_tensorboard(self) -> None:
+        """Initialize Tensorboard logging for training monitoring."""
+        current_time = datetime.now().strftime("%y-%m-%d-%H-%M")
+        self.writer = SummaryWriter(f"runs/{self.config.model_name}-{current_time}")
+        # Log model architecture
+        dummy_input = torch.randn(1, 3, 256, 256).to(self.device)
+        self.writer.add_graph(self.model, dummy_input)
+
+        # Log hyperparameters
+        hparams = {
+            "batch_size": self.config.batch_size,
+            "num_layers": self.config.num_layers,
+            "epochs": self.config.epochs,
+            "milestone": self.config.milestone,
+            "initial_lr": self.config.initial_lr,
+            "architecture": self.config.architecture,
+            "loss_type": self.config.loss_type,
+            "self_supervised": self.config.self_supervised,
+            "use_perceptual_loss": self.config.use_perceptual_loss,
+            "gpu_id": self.config.gpu_id,
+            "data_path": self.config.data_path,
+        }
+        self.writer.add_hparams(hparams, {})
 
     def _create_model(self) -> nn.Module:
         """Initialize and prepare the neural network model."""
@@ -196,7 +220,7 @@ class WatermarkCleaner:
     def _train_step(
         self, 
         img: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, float, float]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, float], float]:
         """Execute a single training step.
         
         Args:
@@ -219,28 +243,46 @@ class WatermarkCleaner:
 
         output = self.model(watermarked_img)
         
-        # Calculate losses
-        output_features = self.vgg_model(output)
-        target_features = self.vgg_model(target_img)
-        
+        # Calculate and track individual losses
+        losses = {}
+
+        # Reconstruction loss
         reconstruction_loss = self.criterion(output, target_img) / watermarked_img.size()[0] * 2
+        losses['reconstruction'] = reconstruction_loss.item()
         
         if self.config.use_perceptual_loss:
+            output_features = self.vgg_model(output)
+            target_features = self.vgg_model(target_img)
             perceptual_loss = (0.024 * self.criterion(output_features, target_features) 
                               / (target_features.size()[0] / 2))
+            losses['perceptual'] = perceptual_loss.item()
             total_loss = reconstruction_loss + perceptual_loss
         else:
             total_loss = reconstruction_loss
 
+        losses['total'] = total_loss.item()
+
         total_loss.backward()
+
+        # Log parameter gradients before clipping
+        if self.writer is not None:
+            for name, param in self.model.named_parameters():
+                if param.grad is not None:
+                    self.writer.add_histogram(f"Gradients_before_clip/{name}", 
+                                              param.grad, self.global_step)
+
+
+        # Gradient clipping
+        nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+
         self.optimizer.step()
 
-        # Calculate PSNR for monitoring
+        # Calculate PSNR
         with torch.no_grad():
             output = torch.clamp(self.model(watermarked_img), 0., 1.)
             psnr = batch_PSNR(output, img.to(self.device), 1.)
 
-        return output, target_img, total_loss.item(), psnr
+        return output, target_img, losses, psnr
 
     def validate(self, epoch: int) -> float:
         """Run validation on the validation dataset.
@@ -253,6 +295,7 @@ class WatermarkCleaner:
         """
         self.model.eval()
         total_psnr = 0
+        val_losses = {'reconstruction': 0.0, 'perceptual': 0.0, 'total': 0.0}
 
         with torch.no_grad():
             for i in range(len(self.val_dataset)):
@@ -273,41 +316,129 @@ class WatermarkCleaner:
         self.writer.add_scalar("PSNR/val", avg_psnr, epoch + 1)
         return avg_psnr
     
-    def _save_model(self, epoch: int) -> None:
+    def _save_model(self, epoch: int, is_best: bool = False) -> None:
         """Save the current model state to disk."""
-        pathname = Path(self.config.model_output_path) / f"{self.config.model_name}_{epoch:03}.pth"
+        filename = f"{self.config.model_name}_"
+        filename += f"{epoch:03}"
+        filename += "_best" if is_best else ""
+        pathname = Path(self.config.model_output_path) / f"{filename}.pth"
         torch.save(
             {
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'epoch': epoch + 1
         }, pathname)
+    
+    def _log_training_batch(
+    self, 
+    epoch: int, 
+    batch_step: int, 
+    watermarked_img: torch.Tensor,
+    output: torch.Tensor, 
+    target_img: torch.Tensor,
+    losses: Dict[str, float],
+    psnr: float,
+    global_step: int
+) -> None:
+        """Log detailed training metrics and visualizations to tensorboard."""
+        # Log all loss components
+        for loss_name, loss_value in losses.items():
+            self.writer.add_scalar(f"Loss/{loss_name}", loss_value, global_step)
+        
+        # Log learning rate
+        current_lr = self.optimizer.param_groups[0]['lr']
+        self.writer.add_scalar('Learning_Rate', current_lr, global_step)
+        
+        # Log PSNR
+        self.writer.add_scalar("Metrics/PSNR_train", psnr, global_step)
+        
+        # Log gradient norms
+        for name, param in self.model.named_parameters():
+            if param.grad is not None:
+                grad_norm = param.grad.norm()
+                self.writer.add_scalar(f"Gradients/{name}_norm", grad_norm, global_step)
+        
+        # Periodically log images
+        if batch_step % 100 == 0:
+            # Create a grid of sample images
+            img_grid = vutils.make_grid([
+                watermarked_img[0].cpu(),  # Input watermarked image
+                output[0].cpu(),           # Model output
+                target_img[0].cpu()        # Target image
+            ], normalize=True, nrow=3)
+            
+            self.writer.add_image(
+                f'Images/epoch_{epoch}_batch_{batch_step}',
+                img_grid,
+                global_step
+            )
+            
+            # Log histograms of model parameters
+            for name, param in self.model.named_parameters():
+                self.writer.add_histogram(f"Parameters/{name}", param, global_step)
 
     def train(self) -> None:
         """Execute the complete training pipeline."""
         print(f'Training on {len(self.train_dataset)} samples')
+
+        self.global_step = 0
+        best_psnr = 0.0
         
-        step = 0
+        # step = 0
         for epoch in range(self.config.epochs):
+            epoch_losses = {
+                'reconstruction': 0.0,
+                'perceptual': 0.0,
+                'total': 0.0
+            }
+            epoch_psnr = 0.0
+
             self._adjust_learning_rate(epoch)
             
             for i, img in enumerate(self.train_loader):
-                output, target, loss, psnr = self._train_step(img)
+                output, target, losses, psnr = self._train_step(img)
+
+                for k, v in losses.items():
+                    epoch_losses[k] += v
+                epoch_psnr += psnr
+
+                self._log_training_batch(
+                    epoch, i, img, output, target, losses, psnr, self.global_step
+                )
                 
                 print(f"[epoch {epoch + 1}][{i + 1}/{len(self.train_loader)}] "
-                      f"loss: {loss:.4f} PSNR_train: {psnr:.4f}")
+                      f"loss: {losses['total']:.4f} PSNR_train: {psnr:.4f}")
                 
-                if step % 10 == 0:
+                self.global_step += 1
+                
+                """ if step % 10 == 0:
                     self.writer.add_scalar("PSNR/train", psnr, step)
                     self.writer.add_scalar("Loss/train", loss, step)
-                step += 1
+                step += 1 """
 
-            # Save model and validate after each epoch
-            self._save_model(epoch)
+            # Log epoch-level metrics
+            num_batches = len(self.train_loader)
+            for loss_name, loss_sum in epoch_losses.items():
+                avg_loss = loss_sum / num_batches
+                self.writer.add_scalar(f"Epoch_Metrics/{loss_name}_avg",
+                                        avg_loss, epoch + 1)
+                
+            avg_epoch_psnr = epoch_psnr / num_batches
+            self.writer.add_scalar("Metrics/PSNR_avg", avg_epoch_psnr, epoch + 1)
+
+            # Validation
             random.seed("validation")
             val_psnr = self.validate(epoch)
             random.seed()
-            print(f"\n[epoch {epoch + 1}] PSNR_val: {val_psnr:.4f}")
+            if val_psnr > best_psnr:
+                best_psnr = val_psnr
+                self._save_model(epoch, is_best=True)
+            else:
+                self._save_model(epoch, is_best=False)
+            print(f"\n[epoch {epoch + 1}] "
+                  f"Avg_loss: {epoch_losses['total']/num_batches:.4f} "
+                  f"Avg_PSNR: {avg_epoch_psnr:.4f} "
+                  f"Val_PSNR: {val_psnr:.4f}")
 
         self.writer.close()
 
