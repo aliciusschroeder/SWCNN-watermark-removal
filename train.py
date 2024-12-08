@@ -136,7 +136,8 @@ class WatermarkCleaner:
             dataset=self.train_dataset,
             batch_size=self.config.batch_size,
             shuffle=True,
-            num_workers=8,
+            # os.cpu_count() // 2 seems like a good starting point
+            num_workers=16,
             pin_memory=True
         )
 
