@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 
 @dataclass
@@ -28,3 +28,9 @@ class TrainingConfig:
             "n2n" if self.self_supervised else "n2c",
         ]
         return "_".join(components)
+
+@dataclass
+class ResumeOptions:
+    """Configuration parameters for resuming training from a checkpoint."""
+    checkpoint_filepath: str
+    log_dir: Optional[str] = None

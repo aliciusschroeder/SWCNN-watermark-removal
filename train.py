@@ -36,7 +36,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter # type: ignore
 
 from configs.tensorboard import TensorBoardConfig
-from configs.training import TrainingConfig
+from configs.training import TrainingConfig, ResumeOptions
 from configs.watermark_variations import get_watermark_validation_variation, get_watermark_variations
 from dataset import Dataset
 from models import HN
@@ -53,10 +53,14 @@ class WatermarkCleaner:
     def __init__(
             self, 
             config: TrainingConfig, 
-            tensorboard_config: TensorBoardConfig = TensorBoardConfig()
+            tensorboard_config: TensorBoardConfig = TensorBoardConfig(),
+            resume_options: Optional[ResumeOptions] = None
         ):
+        self.start_epoch = 0
+        self.global_step = 0
         self.config = config
         self.tb_config = tensorboard_config
+        self.resume_options = resume_options
         self.device = torch.device("cuda" if torch.cuda.is_available() 
                                    else "cpu")
         print(f"Using device: {self.device.type}")
@@ -91,13 +95,44 @@ class WatermarkCleaner:
         
         self._init_datasets()
 
+        if self.resume_options is not None:
+            self._load_checkpoint()
+
+
+    def _load_checkpoint(self) -> None:
+        """Load model and optimizer state from a checkpoint."""
+        if self.resume_options is None:
+            raise ValueError("No resume options provided")
+        print(f"Resuming from checkpoint: {self.resume_options.checkpoint_filepath}")
+        checkpoint = torch.load(self.resume_options.checkpoint_filepath)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
+        self.start_epoch = checkpoint['epoch'] + 1
+        self.global_step = checkpoint['global_step'] + 1
+        
+        print(f"Resuming training from epoch {self.start_epoch + 1} at step {self.global_step}")
+                                              
+
     def _setup_tensorboard(self) -> None:
         """Initialize Tensorboard logging for training monitoring."""
         current_time = datetime.now().strftime("%y-%m-%d-%H-%M")
-        self.writer = SummaryWriter(f"{self.tb_config.log_dir}/{self.config.model_name}-{current_time}")
-        # Log model architecture
-        dummy_input = torch.randn(1, 3, 256, 256).to(self.device)
-        self.writer.add_graph(self.model, dummy_input)
+        log_dir = f"{self.tb_config.log_dir}/{self.config.model_name}-{current_time}"
+        purge_step = None
+        if self.resume_options is not None:
+            if self.resume_options.log_dir is not None:
+                log_dir = self.resume_options.log_dir
+                print(f"Resuming Tensorboard logs from {log_dir}")
+                if self.global_step > 0:
+                    purge_step = self.global_step
+                    print(f"And purging logs after step {purge_step}")
+        
+        self.writer = SummaryWriter(log_dir, purge_step=purge_step)
+
+        if self.start_epoch == 0:
+            # Log model architecture
+            dummy_input = torch.randn(1, 3, 256, 256).to(self.device)
+            self.writer.add_graph(self.model, dummy_input)
 
         # Log hyperparameters
         hparams = {
@@ -334,7 +369,9 @@ class WatermarkCleaner:
             {
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'epoch': epoch + 1
+            'scaler_state_dict': self.scaler.state_dict(),
+            'epoch': epoch,
+            'global_step': self.global_step
         }, pathname)
 
 
@@ -393,10 +430,9 @@ class WatermarkCleaner:
         """Execute the complete training pipeline."""
         print(f'Training on {len(self.train_dataset)} samples')
 
-        self.global_step = 0
         best_psnr = 0.0
         
-        for epoch in range(self.config.epochs):
+        for epoch in range(self.start_epoch, self.config.epochs):
             epoch_losses = {
                 'reconstruction': 0.0,
                 'perceptual': 0.0,
