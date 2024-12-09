@@ -60,8 +60,15 @@ def load_model(model_path, device):
     else:
         print("Detected legacy checkpoint format.")
         model_state_dict = checkpoint
+    
+    new_state_dict = {}
+    for k, v in model_state_dict.items():
+        if k.startswith('module.'):
+            new_state_dict[k[7:]] = v
+        else:
+            new_state_dict[k] = v
 
-    model.load_state_dict(model_state_dict, strict=True)
+    model.load_state_dict(new_state_dict, strict=True)
     model.to(device)
     model.eval()
     print(f"Model loaded successfully from {model_path}")
