@@ -100,14 +100,15 @@ def milios_map_center():
 def get_watermark_variations():
     scale = random.uniform(0.75, 1.25)
     variants = []
-    variants.append(logo_by_name('logo_ppco', scale=scale))
-    variants.append(logo_by_name('logo_mr', scale=scale))
-    variants.append(logo_by_name('logo_mreb', scale=scale))
-    variants.append(logo_by_name('logo_mrlnb', scale=scale))
-    variants.append(logo_milios())
-    variants.append(milios_map())
-    variants.append(milios_map_edgecase())
-    variants.append(milios_map_around_center())
+    variants.append(logo_by_name('logo_ppco', scale=scale))     # 0
+    variants.append(logo_by_name('logo_mr', scale=scale))       # 1
+    variants.append(logo_by_name('logo_mreb', scale=scale))     # 2
+    variants.append(logo_by_name('logo_mrlnb', scale=scale))    # 3
+    variants.append(logo_milios())                              # 4
+    variants.append(milios_map())                   # 5
+    variants.append(milios_map_edgecase())          # 6
+    variants.append(milios_map_around_center())     # 7
+    variants.append(milios_map_center())            # 8
 
     weights = [
         1, # logo_ppco
@@ -118,7 +119,22 @@ def get_watermark_variations():
         6, # milios_map
         2, # milios_map_edgecase
         2, # milios_map_around_center
+        1, # milios_map_center
     ]
+
+    # Fine-tuning weights
+    weights = [
+        0, # logo_ppco
+        0, # logo_mr
+        0, # logo_mreb
+        0, # logo_mrlnb
+        0, # logo_milios
+        16, # milios_map
+        4, # milios_map_edgecase
+        4, # milios_map_around_center
+        1, # milios_map_center
+    ]
+
     if len(variants) != len(weights):
         raise ValueError("The number of watermark variations and their weights must be the same.")
 
