@@ -405,8 +405,11 @@ class WatermarkCleaner:
                     grad_norm = param.grad.norm()
                     self.writer.add_scalar(f"Gradients/{name}_norm", grad_norm, global_step)
         
+        is_nth_global_step = global_step % self.tb_config.save_images_nth_global_step == 0 and global_step > 0
+        is_nth_epoch = epoch % self.tb_config.save_images_nth_epoch == 0 and epoch > 0
+
         # Periodically log images
-        if batch_step % self.tb_config.save_images_nth_batch == 0 and epoch % self.tb_config.save_images_nth_epoch == 0 and epoch > 0:
+        if is_nth_global_step or is_nth_epoch:
             # Create a grid of sample images
             img_grid = vutils.make_grid([
                 watermarked_img[0].cpu(),  # Input watermarked image

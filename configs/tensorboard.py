@@ -10,4 +10,4 @@ class TensorBoardConfig:
     log_gradient_norms: bool = False
     save_checkpoint_nth_epoch: int = 5  # exclusive of epoch 0
     save_images_nth_epoch: int = 5  # exclusive of epoch 0
-    save_images_nth_batch: int = 100  # inclusive of batch 0
+    save_images_nth_global_step: int = 100  # exclusive of step 0
