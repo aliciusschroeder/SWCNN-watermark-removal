@@ -86,7 +86,6 @@ def milios_map_center():
         'watermark_id': 'map_43',
         'occupancy': 0,
         'scale': 0.5,
-        'alpha': 0.66,
         'position': 'center',
         'application_type': 'map',
         'artifacts_config': ArtifactsConfig(
@@ -128,8 +127,8 @@ def get_watermark_variations():
         0, # logo_mr
         0, # logo_mreb
         0, # logo_mrlnb
-        0, # logo_milios
-        16, # milios_map
+        2, # logo_milios
+        8, # milios_map
         4, # milios_map_edgecase
         4, # milios_map_around_center
         1, # milios_map_center
