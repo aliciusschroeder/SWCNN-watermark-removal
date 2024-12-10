@@ -63,6 +63,7 @@ class WatermarkManager:
         self.debug = debug
         self.watermarks: Dict[Union[str, int], Image.Image] = {}
         self.watermark_maps: Dict[Union[str, int], Image.Image] = {}
+        self.watermark_resize_cache: Dict[str, Image.Image] = {}
         self.preview_manager = PreviewManager()
         self._load_all_watermarks()
 
@@ -241,13 +242,21 @@ class WatermarkManager:
         :return: Watermark Image prepared for overlaying as a map.
         """
         watermark = self.get_watermark(watermark_id, pool='map', alpha=alpha)
-        watermark_resized = watermark.resize(
-            (
-                int(watermark.width * scale),
-                int(watermark.height * scale)
-            ),
-            resample=Image.Resampling.LANCZOS
-        ) if scale != 1.0 else watermark
+        if scale == 1.0:
+            watermark_resized = watermark
+        else:
+            identifier = f"{watermark_id}_map_{scale}"
+            if identifier in self.watermark_resize_cache:
+                watermark_resized = self.watermark_resize_cache[identifier]
+            else:
+                watermark_resized = watermark.resize(
+                    (
+                        int(watermark.width * scale),
+                        int(watermark.height * scale)
+                    ),
+                    resample=Image.Resampling.LANCZOS
+                )
+                self.watermark_resize_cache[identifier] = watermark_resized
 
         # Ensure the watermark is at least as large as the base image
         if watermark_resized.width < base_width or watermark_resized.height < base_height:
@@ -258,6 +267,7 @@ class WatermarkManager:
                 ),
                 resample=Image.Resampling.LANCZOS
             )
+            print("Warning: Upscaling a watermark map was necessary!")
 
         if position == "center":
             x = (watermark_resized.width - base_width) // 2
