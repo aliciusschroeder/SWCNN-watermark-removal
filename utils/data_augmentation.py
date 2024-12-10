@@ -4,7 +4,7 @@ from numpy.typing import NDArray
 
 def data_augmentation(image: NDArray[np.float32], mode: int) -> NDArray[np.float32]:
     """
-    Perform data augmentation on the given image.
+    Perform data augmentation on the given image by applying one or multiple transformations based on the mode.
 
     Args:
         image (NDArray[np.float32]): The input image, expected to have shape (C, H, W).
@@ -13,33 +13,40 @@ def data_augmentation(image: NDArray[np.float32], mode: int) -> NDArray[np.float
     Returns:
         NDArray[np.float32]: The augmented image, with the same shape as the input image (C, H, W).
     """
+    if not (0 <= mode <= 7):
+        raise ValueError(
+            "Mode should be an integer between 0 and 7 inclusive.")
 
-    out = np.transpose(image, (1, 2, 0))
+    # Transpose to (H, W, C) for OpenCV operations
+    out = image.transpose(1, 2, 0)
+
     if mode == 0:
-        # original
-        out = out
+        # Original
+        pass
     elif mode == 1:
-        # flip up and down
+        # Flip up and down
         out = np.flipud(out)
     elif mode == 2:
-        # rotate counterwise 90 degree
+        # Rotate counterclockwise 90 degrees
         out = np.rot90(out)
     elif mode == 3:
-        # rotate 90 degree and flip up and down
+        # Rotate 90 degrees and flip up and down
         out = np.rot90(out)
         out = np.flipud(out)
     elif mode == 4:
-        # rotate 180 degree
+        # Rotate 180 degrees
         out = np.rot90(out, k=2)
     elif mode == 5:
-        # rotate 180 degree and flip
+        # Rotate 180 degrees and flip up and down
         out = np.rot90(out, k=2)
         out = np.flipud(out)
     elif mode == 6:
-        # rotate 270 degree
+        # Rotate 270 degrees
         out = np.rot90(out, k=3)
     elif mode == 7:
-        # rotate 270 degree and flip
+        # Rotate 270 degrees and flip up and down
         out = np.rot90(out, k=3)
         out = np.flipud(out)
-    return np.transpose(out, (2, 0, 1))
+
+    # Transpose back to (C, H, W)
+    return out.transpose(2, 0, 1).astype(np.float32)

@@ -1,3 +1,4 @@
+from typing import Literal
 import yaml
 
 
@@ -9,3 +10,7 @@ def get_config(config: str) -> dict:
 def print_debug(*values: object, debug: bool = False) -> None:
     if debug:
         print(*values)
+
+
+StepType = Literal['train', 'validation']
+ModeType = Literal['gray', 'color']

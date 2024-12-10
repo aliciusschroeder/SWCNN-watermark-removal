@@ -1,9 +1,12 @@
 import argparse
 from dataclasses import dataclass
-from typing import List, Union, cast
+import os
+from typing import List, Union
 
-from dataset import prepare_data, ModeType
+from utils.helper import ModeType
 from utils.helper import get_config
+from utils.data_preparation import DataPreparation
+from configs.preparation import DataPreparationConfiguration
 
 
 @dataclass
@@ -37,25 +40,28 @@ parser.add_argument("--mode", type=str_to_mode, default='color',
                     help="Mode (gray or color)")
 
 parsed_args = parser.parse_args()
-args = Args(
-    scales=parsed_args.scales,
+params = DataPreparationConfiguration(
     patch_size=parsed_args.patch_size,
     stride=parsed_args.stride,
     aug_times=parsed_args.aug_times,
-    mode=cast(ModeType, parsed_args.mode)
+    mode=parsed_args.mode,
+    scales=parsed_args.scales
 )
 
 config = get_config('configs/config.yaml')
+data_path = config['data_path']
+if not os.path.exists(data_path):
+    raise FileNotFoundError(f"Data path not found: {data_path}")
 
 
 def main():
-    prepare_data(
+    DataPreparation.prepare_data(
         data_path=config['data_path'],
-        patch_size=args.patch_size,
-        stride=args.stride,
-        aug_times=args.aug_times,
-        mode=args.mode,
-        scales=args.scales
+        patch_size=params.patch_size,
+        stride=params.stride,
+        aug_times=params.aug_times,
+        mode=params.mode,
+        scales=params.scales
     )
 
 
