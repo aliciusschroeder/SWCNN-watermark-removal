@@ -90,7 +90,7 @@ class WatermarkCleaner:
         
         self.watermark_manager = WatermarkManager(
             data_path=f"{self.config.data_path}/watermarks",
-            swap_blue_red_channels=True
+            swap_blue_red_channels=False,
         )
         
         self._init_datasets()

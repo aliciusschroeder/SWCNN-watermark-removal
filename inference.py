@@ -53,8 +53,6 @@ def load_model(model_path, device):
     # Load the state dictionary
     checkpoint = torch.load(model_path, map_location=device)
 
-    # TODO: Check if the model was trained using DataParallel and whether removal of 'module.' prefix is needed
-
     if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
         print("Detected new checkpoint format.")
         model_state_dict = checkpoint['model_state_dict']
@@ -245,10 +243,7 @@ def postprocess_image(reconstructed_padded, original_size, pad):
     # Denormalize to [0, 255]
     output_denormalized = (output_cropped * 255.0).astype(np.uint8)
 
-    # Convert RGB back to BGR for OpenCV
-    output_bgr = cv2.cvtColor(output_denormalized, cv2.COLOR_RGB2BGR)
-
-    return output_bgr
+    return output_denormalized
 
 
 def main():
