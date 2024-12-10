@@ -100,3 +100,31 @@ def linear_to_srgb(color: np.ndarray, randomize: bool = True) -> np.ndarray:
         params["multiplier"] * (color ** (1 / params["gamma"])) - params["offset"],
     )
 
+
+def im2patch(img: np.ndarray, win: int, stride: int = 1) -> np.ndarray:
+    """
+    Converts an image into overlapping patches.
+
+    Args:
+        img (np.ndarray): Input image of shape (C, H, W).
+        win (int): Window size for patches.
+        stride (int, optional): Stride for patch extraction. Defaults to 1.
+
+    Returns:
+        np.ndarray: Array of image patches with shape (C, win, win, TotalPatNum).
+    """
+    c, h, w = img.shape
+    patch_h = (h - win) // stride + 1
+    patch_w = (w - win) // stride + 1
+    total_patches = patch_h * patch_w
+
+    patches = np.zeros((c, win, win, total_patches), dtype=np.float32)
+    patch_idx = 0
+
+    for i in range(0, h - win + 1, stride):
+        for j in range(0, w - win + 1, stride):
+            patch = img[:, i:i + win, j:j + win]
+            patches[:, :, :, patch_idx] = patch
+            patch_idx += 1
+
+    return patches

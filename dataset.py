@@ -10,25 +10,6 @@ from torch.utils.data import Dataset as TorchDataset
 from utils.data_preparation import DataPreparation
 from utils.helper import ModeType, StepType
 
-def Im2Patch(img, win, stride=1):
-    k = 0
-    print("img.shape", img.shape)
-    endc = img.shape[0]
-    endw = img.shape[1]
-    endh = img.shape[2]
-    patch = img[:, 0:endw - win + 0 + 1:stride, 0:endh - win + 0 + 1:stride]
-    TotalPatNum = patch.shape[1] * patch.shape[2]
-    Y = np.zeros([endc, win * win, TotalPatNum], np.float32)
-    for i in range(win):
-        for j in range(win):
-            patch = img[
-                :,
-                i:endw - win + i + 1:stride,
-                j:endh - win + j + 1:stride
-            ]
-            Y[:, k, :] = np.array(patch[:]).reshape(endc, TotalPatNum)
-            k = k + 1
-    return Y.reshape([endc, win, win, TotalPatNum])
 
 class Dataset(TorchDataset):
     """
@@ -41,14 +22,14 @@ class Dataset(TorchDataset):
         data_path (str): Path to the dataset directory.
     """
 
-    def __init__(self, train: bool = True, mode: ModeType = 'color', data_path: str = './'):
+    def __init__(self, train: bool = True, mode: ModeType = 'color', data_path: str = 'data/'):
         """
         Initializes the Dataset.
 
         Args:
-            train (bool, optional): If True, loads training data. Defaults to True.
+            train (bool, optional): If True, loads training data, otherwise validation data. Defaults to True.
             mode (ModeType, optional): Mode of images, 'gray' or 'color'. Defaults to 'color'.
-            data_path (str, optional): Path to the dataset. Defaults to './'.
+            data_path (str, optional): Path to the dataset. Defaults to 'data/'.
         """
         super().__init__()
         self.train = train
@@ -85,7 +66,8 @@ class Dataset(TorchDataset):
             torch.Tensor: Tensor representation of the image patch.
         """
         step: StepType = 'train' if self.train else 'validation'
-        h5f_path = DataPreparation.get_h5_filepath(self.data_path, step, self.mode)
+        h5f_path = DataPreparation.get_h5_filepath(
+            self.data_path, step, self.mode)
 
         with h5py.File(h5f_path, 'r') as h5f:
             key = self.keys[index]
