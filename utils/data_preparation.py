@@ -1,7 +1,7 @@
 import glob
 import logging
 import os
-from typing import List, Literal, Union
+from typing import List, Literal, Tuple, Union
 
 import cv2
 import h5py
@@ -54,7 +54,11 @@ class DataPreparation():
         return os.path.join(data_path, filename)
 
     @staticmethod
-    def input_files(data_path: str, step: StepType, mode: ModeType = 'color') -> tuple:
+    def input_files(
+        data_path: str,
+        step: StepType,
+        mode: ModeType = 'color'
+    ) -> Tuple[str, List[str], str]:
         """
         Retrieves the list of image files for the specified step and mode.
 
@@ -81,6 +85,7 @@ class DataPreparation():
         aug_times: int = 1,
         mode: ModeType = 'color',
         scales: List[Union[int, float]] = [1],
+        max_samples: Tuple[int, int] = (80, 8)
     ) -> None:
         """
         Prepares the dataset by processing images and saving them into HDF5 files.
@@ -92,6 +97,7 @@ class DataPreparation():
             aug_times (int, optional): Number of augmentation times. Defaults to 1.
             mode (ModeType, optional): 'gray' or 'color'. Defaults to 'color'.
             scales (List[Union[int, float]], optional): List of scales for resizing. Defaults to [1].
+            max_samples (Tuple[int, int], optional): Maximum number of samples for training and validation. Defaults to (0, 0), meaning no limits.
         """
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
@@ -131,7 +137,9 @@ class DataPreparation():
             scales=scales,
             aug_times=aug_times,
             mode=mode,
-            logger=logger
+            logger=logger,
+            max_samples=max_samples[0]
+
         )
         print(f"Training set, # samples: {train_size}")
 
@@ -145,7 +153,8 @@ class DataPreparation():
             scales=scales,
             aug_times=1,
             mode=mode,
-            logger=logger
+            logger=logger,
+            max_samples=max_samples[1]
         )
         print(f"Validation set, # samples: {val_size}")
         """ DataPreparation._process_validation_files(
@@ -164,6 +173,7 @@ class DataPreparation():
         aug_times: int,
         mode: ModeType,
         logger: logging.Logger,
+        max_samples: int = 0
     ) -> int:
         """
         Processes training or validation files and saves them into HDF5.
@@ -191,7 +201,7 @@ class DataPreparation():
                 for scale in scales:
                     scaled_h, scaled_w = int(h * scale), int(w * scale)
                     if mode == 'color' and min(scaled_h, scaled_w) < 256:
-                        logger.warning(f"Skipping image {file_path} at scale "+
+                        logger.warning(f"Skipping image {file_path} at scale " +
                                        f"{scale} due to insufficient size.")
                         continue
 
@@ -221,6 +231,8 @@ class DataPreparation():
                         data = patches[:, :, :, n].copy()
                         h5f.create_dataset(str(sample_count), data=data)
                         sample_count += 1
+                        if max_samples > 0 and sample_count >= max_samples:
+                            return sample_count
 
                         for m in range(aug_times - 1):
                             augmented_data = data_augmentation(
@@ -228,6 +240,9 @@ class DataPreparation():
                             aug_key = f"{sample_count}_aug_{m + 1}"
                             h5f.create_dataset(aug_key, data=augmented_data)
                             sample_count += 1
+                            if max_samples > 0 and sample_count >= max_samples:
+                                return sample_count
+
             return sample_count
 
     # Use this method instead of _process_files for validation data if you want to skip patching
