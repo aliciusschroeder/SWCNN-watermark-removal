@@ -1,4 +1,5 @@
 import glob
+import logging
 import os
 from typing import List, Literal, Union
 
@@ -20,7 +21,6 @@ class DataPreparation():
     data augmentation, and saving processed data to HDF5 files.
     """
 
-
     @staticmethod
     def normalize(data: np.ndarray) -> np.ndarray:
         """
@@ -33,7 +33,6 @@ class DataPreparation():
             np.ndarray: Normalized image data.
         """
         return data / 255.0
-
 
     @staticmethod
     def get_h5_filepath(data_path: str, step: StepType, mode: ModeType = 'color') -> str:
@@ -53,7 +52,6 @@ class DataPreparation():
             filename += '_color'
         filename += '.h5'
         return os.path.join(data_path, filename)
-
 
     @staticmethod
     def input_files(data_path: str, step: StepType, mode: ModeType = 'color') -> tuple:
@@ -75,7 +73,6 @@ class DataPreparation():
         h5f_path = DataPreparation.get_h5_filepath(data_path, step, mode)
         return file_pattern, files, h5f_path
 
-
     @staticmethod
     def prepare_data(
         data_path: str,
@@ -83,7 +80,7 @@ class DataPreparation():
         stride: int,
         aug_times: int = 1,
         mode: ModeType = 'color',
-        scales: List[Union[int, float]] = [1]
+        scales: List[Union[int, float]] = [1],
     ) -> None:
         """
         Prepares the dataset by processing images and saving them into HDF5 files.
@@ -96,8 +93,6 @@ class DataPreparation():
             mode (ModeType, optional): 'gray' or 'color'. Defaults to 'color'.
             scales (List[Union[int, float]], optional): List of scales for resizing. Defaults to [1].
         """
-        import logging
-
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
 
@@ -135,7 +130,8 @@ class DataPreparation():
             stride=stride,
             scales=scales,
             aug_times=aug_times,
-            mode=mode
+            mode=mode,
+            logger=logger
         )
         print(f"Training set, # samples: {train_size}")
 
@@ -148,7 +144,8 @@ class DataPreparation():
             stride=stride,
             scales=scales,
             aug_times=1,
-            mode=mode
+            mode=mode,
+            logger=logger
         )
         print(f"Validation set, # samples: {val_size}")
         """ DataPreparation._process_validation_files(
@@ -156,7 +153,6 @@ class DataPreparation():
             h5f_path=val_h5f_path,
             mode=mode
         ) """
-
 
     @staticmethod
     def _process_files(
@@ -167,7 +163,7 @@ class DataPreparation():
         scales: List[Union[int, float]],
         aug_times: int,
         mode: ModeType,
-        loglevel: int = 2,
+        logger: logging.Logger,
     ) -> int:
         """
         Processes training or validation files and saves them into HDF5.
@@ -180,16 +176,14 @@ class DataPreparation():
             scales (List[Union[int, float]]): List of scales for resizing.
             aug_times (int): Number of augmentation times.
             mode (ModeType): 'gray' or 'color'.
-            loglevel (int, optional): Level of debug messages to display. Defaults to 2.
-            0: Error, 1: Warning, 2: Info, 3: Debug.
+            logger (logging.Logger): Logger object.
         """
         with h5py.File(h5f_path, 'w') as h5f:
             sample_count = 0
             for file_path in files:
                 img = cv2.imread(file_path)
                 if img is None:
-                    if loglevel > 0: # Warning
-                        print(f"Failed to read image: {file_path}")
+                    logger.warning(f"Failed to read image: {file_path}")
                     continue
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
@@ -197,10 +191,8 @@ class DataPreparation():
                 for scale in scales:
                     scaled_h, scaled_w = int(h * scale), int(w * scale)
                     if mode == 'color' and min(scaled_h, scaled_w) < 256:
-                        if loglevel > 0: # Warning
-                            print(
-                                f"Skipping image {file_path} at scale {scale} due to insufficient size."
-                            )
+                        logger.warning(f"Skipping image {file_path} at scale "+
+                                       f"{scale} due to insufficient size.")
                         continue
 
                     resized_img = cv2.resize(
@@ -210,18 +202,20 @@ class DataPreparation():
                     )
 
                     if mode == 'gray':
-                        resized_img = np.expand_dims(resized_img[:, :, 0], axis=0)
+                        resized_img = np.expand_dims(
+                            resized_img[:, :, 0], axis=0)
                     else:
                         resized_img = resized_img.transpose((2, 0, 1))
 
-                    normalized_img = DataPreparation.normalize(resized_img.astype(np.float32))
-                    patches = im2patch(normalized_img, win=patch_size, stride=stride)
+                    normalized_img = DataPreparation.normalize(
+                        resized_img.astype(np.float32))
+                    patches = im2patch(
+                        normalized_img, win=patch_size, stride=stride)
 
-                    if loglevel > 1: # Info
-                        print(
-                            f"Processing file: {file_path}, scale: {scale:.1f}, "
-                            f"# samples: {patches.shape[3] * aug_times}"
-                        )
+                    logger.info(
+                        f"Processing file: {file_path}, scale: {scale:.1f}, "
+                        f"# samples: {patches.shape[3] * aug_times}"
+                    )
 
                     for n in range(patches.shape[3]):
                         data = patches[:, :, :, n].copy()
@@ -229,20 +223,21 @@ class DataPreparation():
                         sample_count += 1
 
                         for m in range(aug_times - 1):
-                            augmented_data = data_augmentation(data, np.random.randint(1, 8))
+                            augmented_data = data_augmentation(
+                                data, np.random.randint(1, 8))
                             aug_key = f"{sample_count}_aug_{m + 1}"
                             h5f.create_dataset(aug_key, data=augmented_data)
                             sample_count += 1
             return sample_count
 
-
     # Use this method instead of _process_files for validation data if you want to skip patching
+
     @staticmethod
     def _process_validation_files(
         files: List[str],
         h5f_path: str,
         mode: ModeType,
-        loglevel: int = 2
+        logger
     ) -> None:
         """
         Processes validation files and saves them into HDF5.
@@ -251,18 +246,15 @@ class DataPreparation():
             files (List[str]): List of validation image file paths.
             h5f_path (str): Path to the validation HDF5 file.
             mode (ModeType): 'gray' or 'color'.
-            loglevel (int, optional): Level of debug messages to display. Defaults to 2.
-            0: Error, 1: Warning, 2: Info, 3: Debug.
+            logger (logging.Logger): Logger object.
         """
         with h5py.File(h5f_path, 'w') as h5f:
             val_count = 0
             for file_path in files:
-                if loglevel > 1:
-                    print(f"Processing validation file: {file_path}")
+                logger.info(f"Processing validation file: {file_path}")
                 img = cv2.imread(file_path)
                 if img is None:
-                    if loglevel > 0:
-                        print(f"Failed to read image: {file_path}")
+                    logger.warning(f"Failed to read image: {file_path}")
                     continue
 
                 if mode == 'gray':
@@ -270,8 +262,8 @@ class DataPreparation():
                 else:
                     img = img.transpose((2, 0, 1))
 
-                normalized_img = DataPreparation.normalize(img.astype(np.float32))
+                normalized_img = DataPreparation.normalize(
+                    img.astype(np.float32))
                 h5f.create_dataset(str(val_count), data=normalized_img)
                 val_count += 1
-            if loglevel > 1:
-                print(f"Validation set, # samples: {val_count}")
+            logger.info(f"Validation set, # samples: {val_count}")
