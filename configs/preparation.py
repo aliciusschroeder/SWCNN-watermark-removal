@@ -1,19 +1,19 @@
 from dataclasses import dataclass, field
-from typing import List, Union
+from typing import List, Literal, Tuple, Union
 from utils.helper import ModeType
 
-default_patch_size: int = 256
-default_stride: int = 128
-default_aug_times: int = 1
-default_mode: ModeType = 'color'
-default_scales: List[Union[int, float]] = [1]
+SamplingMethodType = Literal['default', 'mixed']
 
 
 @dataclass
 class DataPreparationConfiguration:
-    patch_size: int = default_patch_size
-    stride: int = default_stride
-    aug_times: int = default_aug_times
-    mode: ModeType = default_mode
+    # See DataPreparation.prepare_data() in ./utils/prepare_data.py for param descriptions
+    patch_size: int = 256
+    stride: int = 128
+    aug_times: int = 1
+    mode: ModeType = 'color'
     scales: List[Union[int, float]] = field(
-        default_factory=lambda: default_scales)
+        default_factory=lambda: [1])
+    max_samples: Tuple[int, int] = (0, 0)
+    sampling_method: SamplingMethodType = 'default'
+    seed: Union[int, str] = 42

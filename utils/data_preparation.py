@@ -1,12 +1,14 @@
 import glob
 import logging
 import os
+import random
 from typing import List, Literal, Tuple, Union
 
 import cv2
 import h5py
 import numpy as np
 
+from configs.preparation import SamplingMethodType
 from utils.data_augmentation import data_augmentation
 from utils.helper import ModeType
 from utils.image import im2patch
@@ -85,7 +87,9 @@ class DataPreparation():
         aug_times: int = 1,
         mode: ModeType = 'color',
         scales: List[Union[int, float]] = [1],
-        max_samples: Tuple[int, int] = (80, 8)
+        max_samples: Tuple[int, int] = (0, 0),
+        sampling_method: SamplingMethodType = 'default',
+        seed: Union[int, str] = 42
     ) -> None:
         """
         Prepares the dataset by processing images and saving them into HDF5 files.
@@ -127,41 +131,61 @@ class DataPreparation():
         logger.info(f"Found {len(train_files)} training files")
         logger.info(f"Found {len(val_files)} validation files")
 
-        # Process Training Data
-        logger.info('Processing training data')
-        train_size = DataPreparation._process_files(
-            files=train_files,
-            h5f_path=train_h5f_path,
-            patch_size=patch_size,
-            stride=stride,
-            scales=scales,
-            aug_times=aug_times,
-            mode=mode,
-            logger=logger,
-            max_samples=max_samples[0]
+        if sampling_method == 'default':
+            # Process Training Data
+            logger.info('Processing training data')
+            train_size = DataPreparation._process_files(
+                files=train_files,
+                h5f_path=train_h5f_path,
+                patch_size=patch_size,
+                stride=stride,
+                scales=scales,
+                aug_times=aug_times,
+                mode=mode,
+                logger=logger,
+                max_samples=max_samples[0]
 
-        )
-        print(f"Training set, # samples: {train_size}")
+            )
+            print(f"Training set, # samples: {train_size}")
 
-        # Process Validation Data
-        logger.info('Processing validation data')
-        val_size = DataPreparation._process_files(
-            files=val_files,
-            h5f_path=val_h5f_path,
-            patch_size=patch_size,
-            stride=stride,
-            scales=scales,
-            aug_times=1,
-            mode=mode,
-            logger=logger,
-            max_samples=max_samples[1]
-        )
-        print(f"Validation set, # samples: {val_size}")
-        """ DataPreparation._process_validation_files(
-            files=val_files,
-            h5f_path=val_h5f_path,
-            mode=mode
-        ) """
+            # Process Validation Data
+            logger.info('Processing validation data')
+            val_size = DataPreparation._process_files(
+                files=val_files,
+                h5f_path=val_h5f_path,
+                patch_size=patch_size,
+                stride=stride,
+                scales=scales,
+                aug_times=1,
+                mode=mode,
+                logger=logger,
+                max_samples=max_samples[1]
+            )
+            print(f"Validation set, # samples: {val_size}")
+        elif sampling_method == 'mixed':
+            # Process Training & Validation Data Together
+            if train_files is None or val_files is None:
+                raise ValueError("No training or validation files found")
+            combined_files = train_files + val_files
+            random.seed(seed)
+            random.shuffle(combined_files)
+            logger.info('Processing training data')
+            train_size, val_size = DataPreparation._process_files_mixed(
+                files=combined_files,
+                h5f_path_train=train_h5f_path,
+                h5f_path_val=val_h5f_path,
+                patch_size=patch_size,
+                stride=stride,
+                scales=scales,
+                aug_times=aug_times,
+                mode=mode,
+                logger=logger,
+                max_samples=max_samples
+            )
+            print(f"Training set, # samples: {train_size}")
+            print(f"Validation set, # samples: {val_size}")
+        else:
+            raise ValueError("Invalid sampling method")
 
     @staticmethod
     def _process_files(
@@ -244,6 +268,131 @@ class DataPreparation():
                                 return sample_count
 
             return sample_count
+
+    @staticmethod
+    def select_bucket(sample_count: Tuple[int, int], max_samples: Tuple[int, int]) -> Tuple[int, Tuple[int, int]]:
+        results = [
+            (0, sample_count),
+            (1, (sample_count[0] + 1, sample_count[1])),
+            (2, (sample_count[0], sample_count[1] + 1))
+        ]
+
+        a_full = sample_count[0] >= max_samples[0] and max_samples[0] > 0
+        b_full = sample_count[1] >= max_samples[1] and max_samples[1] > 0
+
+        if a_full and b_full:
+            return results[0]
+        if a_full:
+            return results[2]
+        if b_full:
+            return results[1]
+        if max_samples[0] == 0 and max_samples[1] == 0:
+            choice = np.random.choice([1, 2])
+        else:
+            choice = np.random.choice(
+                [1, 2], 
+                p=[
+                    (max_samples[0] - sample_count[0]) / (max_samples[0] + max_samples[1] - sum(sample_count)), 
+                    (max_samples[1] - sample_count[1]) / (max_samples[0] + max_samples[1] - sum(sample_count))
+                ]
+            )
+        return results[choice]
+
+
+    @staticmethod
+    def _process_files_mixed(
+        files: List[str],
+        h5f_path_train: str,
+        h5f_path_val: str,
+        patch_size: int,
+        stride: int,
+        scales: List[Union[int, float]],
+        aug_times: int,
+        mode: ModeType,
+        logger: logging.Logger,
+        max_samples: Tuple[int, int] = (10, 1)
+    ) -> Tuple[int, int]:
+        """
+        Processes training or validation files and saves them into HDF5.
+
+        Args:
+            files (List[str]): List of image file paths.
+            h5f_path (str): Path to the HDF5 file.
+            patch_size (int): Size of the image patches.
+            stride (int): Stride for patch extraction.
+            scales (List[Union[int, float]]): List of scales for resizing.
+            aug_times (int): Number of augmentation times.
+            mode (ModeType): 'gray' or 'color'.
+            logger (logging.Logger): Logger object.
+        """
+        with h5py.File(h5f_path_train, 'w') as h5f_train:
+            with h5py.File(h5f_path_val, 'w') as h5f_val:
+                sample_count: Tuple[int, int] = (0, 0)
+                for file_path in files:
+                    img = cv2.imread(file_path)
+                    if img is None:
+                        logger.warning(f"Failed to read image: {file_path}")
+                        continue
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+                    h, w, c = img.shape
+                    for scale in scales:
+                        scaled_h, scaled_w = int(h * scale), int(w * scale)
+                        if mode == 'color' and min(scaled_h, scaled_w) < 256:
+                            logger.warning(f"Skipping image {file_path} at scale " +
+                                           f"{scale} due to insufficient size.")
+                            continue
+
+                        resized_img = cv2.resize(
+                            img,
+                            (scaled_w, scaled_h),
+                            interpolation=cv2.INTER_CUBIC
+                        )
+
+                        if mode == 'gray':
+                            resized_img = np.expand_dims(
+                                resized_img[:, :, 0], axis=0)
+                        else:
+                            resized_img = resized_img.transpose((2, 0, 1))
+
+                        normalized_img = DataPreparation.normalize(
+                            resized_img.astype(np.float32))
+                        patches = im2patch(
+                            normalized_img, win=patch_size, stride=stride)
+
+                        logger.info(
+                            f"Processing file: {file_path}, scale: {scale:.1f}, "
+                            f"# samples: {patches.shape[3] * aug_times}"
+                        )
+
+                        for n in range(patches.shape[3]):
+                            data = patches[:, :, :, n].copy()
+                            selection, sample_count = DataPreparation.select_bucket(sample_count, max_samples)
+                            if selection == 0:
+                                return sample_count
+                            if selection == 1:
+                                h5f_train.create_dataset(str(sample_count[0]), data=data)
+                            elif selection == 2:
+                                h5f_val.create_dataset(str(sample_count[1]), data=data)
+                            else:
+                                raise ValueError("Invalid selection")
+
+
+                            for m in range(aug_times - 1):
+                                selection, sample_count = DataPreparation.select_bucket(sample_count, max_samples)
+                                augmented_data = data_augmentation(
+                                    data, np.random.randint(1, 8))
+                                aug_key = f"{sample_count[selection-1]}_aug_{m + 1}"
+                                if selection == 0:
+                                    return sample_count
+                                if selection == 1:
+                                    h5f_train.create_dataset(aug_key, data=augmented_data)
+                                elif selection == 2:
+                                    h5f_val.create_dataset(aug_key, data=augmented_data)
+                                else:
+                                    raise ValueError("Invalid selection")
+
+                return sample_count
 
     # Use this method instead of _process_files for validation data if you want to skip patching
 
