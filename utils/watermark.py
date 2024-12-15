@@ -12,7 +12,7 @@ import torch
 from scipy.ndimage import convolve
 
 from utils.helper import print_debug
-from utils.image import linear_to_srgb, srgb_to_linear
+from utils.image_numba import linear_to_srgb, srgb_to_linear
 from utils.preview import PreviewManager
 
 ApplicationType = Literal["stamp", "map"]
@@ -309,7 +309,9 @@ class WatermarkManager:
                     self.debug.print_apply_watermark)
 
         base_w, base_h = base_image.size
-        layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0))
+        # As per the PIL documentation, a tuple of 4 values is a legal 
+        # argument for the RGBA mode but it's not reflected in their type hints
+        layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0)) # type: ignore
 
         if application_type == "stamp":
             wm = self.prepare_watermark_stamp(
