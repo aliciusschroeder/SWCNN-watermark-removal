@@ -530,7 +530,8 @@ def apply_watermark_with_artifacts(
     watermark: Image.Image,
     alpha: float,
     artifact_intensity: float,
-    kernel_size: int
+    kernel_size: int,
+    convert_to_linear_space: bool = False
 ) -> Image.Image:
     """
     Applies a watermark to the base image and introduces artifacts around the watermark area.
@@ -557,15 +558,22 @@ def apply_watermark_with_artifacts(
     base_arr = apply_overlay_with_artifacts(base_arr, expanded_mask, artifact_intensity)
 
     # Convert to linear color space
-    overlay_linear = srgb_to_linear(overlay_arr[:, :, :3] / 255.0)
-    base_linear = srgb_to_linear(base_arr[:, :, :3] / 255.0)
+    if convert_to_linear_space:
+        overlay_linear = srgb_to_linear(overlay_arr[:, :, :3] / 255.0)
+        base_linear = srgb_to_linear(base_arr[:, :, :3] / 255.0)
+    else:
+        overlay_linear = overlay_arr[:, :, :3] / 255.0
+        base_linear = base_arr[:, :, :3] / 255.0
 
     # Blend the images based on alpha
     mask_3d = np.stack([alpha_mask] * 3, axis=-1) * alpha
     blended = overlay_linear * mask_3d + base_linear * (1 - mask_3d)
 
     # Convert back to sRGB
-    blended_srgb = linear_to_srgb(blended) * 255.0
+    if convert_to_linear_space:
+        blended_srgb = linear_to_srgb(blended) * 255.0
+    else:
+        blended_srgb = blended * 255.0
     blended_srgb = np.clip(blended_srgb, 0, 255).astype(np.uint8)
 
     # Combine with alpha channel
