@@ -297,7 +297,6 @@ class WatermarkManager:
         base_image: Image.Image,
         watermark_id: Union[str, int],
         scale: float = 1.0,
-        # Ignored, if artifacts_config is provided as their alpha works differently
         alpha: float = 1.0,
         position: PositionType = "center",
         application_type: ApplicationType = "map",
@@ -309,9 +308,7 @@ class WatermarkManager:
                     self.debug.print_apply_watermark)
 
         base_w, base_h = base_image.size
-        # As per the PIL documentation, a tuple of 4 values is a legal 
-        # argument for the RGBA mode but it's not reflected in their type hints
-        layer = Image.new("RGBA", base_image.size, (0, 0, 0, 0)) # type: ignore
+        layer = Image.new("RGBA", base_image.size, color=0) # color=0 is fully transparent black        
 
         if application_type == "stamp":
             wm = self.prepare_watermark_stamp(
@@ -379,8 +376,7 @@ class WatermarkManager:
         or in batch processing mode for multiple images.
 
         Args:
-            img_train (torch.Tensor): Input image tensor(s). In standalone mode, shape [C, H, W].
-                In batch processing mode, shape [N, C, H, W].
+            img_train (torch.Tensor): Input image tensor(s), shape [N, C, H, W].
             watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
             self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
             same_random_wm_seed (int, optional): Random seed or image index to use when self_supervision is True. Defaults to 0.
