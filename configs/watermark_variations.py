@@ -3,6 +3,7 @@ Customized watermark variations for the watermarking process. Make sure to write
 """
 
 import random
+from typing import Union
 from utils.watermark import ArtifactsConfig
 
 def artifacts_variation():
@@ -35,11 +36,11 @@ def logo_milios():
     }
 
 
-def milios_map():
+def milios_map(map: Union[str, int] = 43, scale: float = 0.5):
     return {
-        'watermark_id': 'map_43',
+        'watermark_id': f'map_{map}',
         'occupancy': 0,
-        'scale': 0.5,
+        'scale': scale,
         'position': 'random',
         'application_type': 'map',
         'artifacts_config': artifacts_variation(),

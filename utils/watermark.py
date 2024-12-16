@@ -596,4 +596,27 @@ def show_tmp_img(tmp: Image.Image) -> None:
     plt.show()
 
 
-# TODO: Implement add_watermark_standalone for testing directly with images
+def main():
+    testfile = input("Enter the image filename (test.jpg): ")
+    if not testfile:
+        testfile = "test.jpg"
+    base = Image.open("data/train/" + testfile)
+    wmm = WatermarkManager(swap_blue_red_channels=False)
+    result = wmm.apply_watermark(
+        base,
+        'map_43',
+        scale=0.5,
+        alpha=0.5,
+        position="center",
+        application_type="map",
+        artifacts_config=ArtifactsConfig(
+            alpha=0.66,
+            intensity=0.5,
+            kernel_size=7
+        )
+    )
+    
+    result.show()
+
+if __name__ == "__main__":
+    main()

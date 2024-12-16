@@ -16,7 +16,7 @@ from models import HN
 from utils.validation import batch_PSNR
 from utils.helper import get_config
 from utils.validation import *
-from utils.watermark import WatermarkManager, add_watermark_noise_test
+from utils.watermark import WatermarkManager
 
 device = torchdevice("cuda" if cuda_is_available() else "cpu")
 
