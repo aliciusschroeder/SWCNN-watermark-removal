@@ -511,107 +511,19 @@ def confirm_occupancy(img_cnt: np.ndarray, occupancy_ratio: float, debug: bool =
     return threshold_exceeded
 
 
-def add_watermark_train(
-    img_train: torch.Tensor,
-    watermark_manager: WatermarkManager,
-    occupancy: float = 50,
-    self_supervision: bool = False,
-    same_random: int = 0,
-    alpha: float = 0.3
-) -> torch.Tensor:
-    """
-    Add watermark noise to images using default parameters.
-
-    Args:
-        img_train (torch.Tensor): Input image tensor(s).
-        watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
-        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 50.
-        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
-        same_random (int, optional): Random seed or image index. Defaults to 0.
-        alpha (float, optional): Opacity of the watermark. Defaults to 0.3.
-
-    Returns:
-        torch.Tensor: Images with watermarks applied.
-    """
-    return watermark_manager.add_watermark_generic(
-        img_train=img_train,
-        occupancy=occupancy,
-        self_supervision=self_supervision,
-        same_random_wm_seed=same_random,
-        alpha=alpha
-    )
-
-
-def add_watermark_noise_B(
-    img_train: torch.Tensor,
-    watermark_manager: WatermarkManager,
-    occupancy: float = 0,
-    self_supervision: bool = False,
-    same_random: int = 0,
-    alpha: float = 0.3
-) -> torch.Tensor:
-    """
-    Add watermark noise to images with adjusted alpha value.
-
-    Args:
-        img_train (torch.Tensor): Input image tensor(s).
-        watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
-        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 50.
-        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
-        same_random (int, optional): Random seed or image index. Defaults to 0.
-        alpha (float, optional): Base opacity of the watermark. Actual opacity may vary. Defaults to 0.3.
-
-    Returns:
-        torch.Tensor: Images with watermarks applied.
-    """
-    # Example adjustment: Vary alpha slightly
-    alpha_variation = alpha + random.uniform(0, 0.7)
-    return watermark_manager.add_watermark_generic(
-        img_train=img_train,
-        occupancy=occupancy,
-        self_supervision=self_supervision,
-        same_random_wm_seed=same_random,
-        alpha=alpha_variation
-    )
-
-
-def add_watermark_noise_test(
-    img_train: torch.Tensor,
-    watermark_manager: WatermarkManager,
-    occupancy: float = 0,
-    img_id: Union[str, int] = 3,
-    scale: float = 1.5,
-    self_supervision: bool = False,
-    same_random: int = 0,
-    alpha: float = 0.3
-) -> torch.Tensor:
-    """
-    Add watermark noise to images for testing purposes.
-
-    Args:
-        img_train (torch.Tensor): Input image tensor(s).
-        watermark_manager (WatermarkManager): Instance of WatermarkManager for accessing watermarks.
-        occupancy (float, optional): Desired occupancy ratio percentage. Defaults to 0.
-        img_id (Union[str, int], optional): Specific watermark image ID to use. Defaults to 3.
-        scale_img (float, optional): Fixed scale for the watermark image. Defaults to 1.5.
-        self_supervision (bool, optional): Whether to use self-supervision mode. Defaults to False.
-        same_random (int, optional): Random seed or image index. Defaults to 0.
-        alpha (float, optional): Opacity of the watermark. Defaults to 0.3.
-
-    Returns:
-        torch.Tensor: Images with watermarks applied.
-    """
-    return watermark_manager.add_watermark_generic(
-        img_train=img_train,
-        occupancy=occupancy,
-        self_supervision=self_supervision,
-        same_random_wm_seed=same_random,
-        alpha=alpha,
-        watermark_id=img_id,
-        scale=scale,
-        position=(0, 0)
-    )
-
+def apply_overlay_with_artifacts(
+    base_arr: np.ndarray,
+    expanded_mask: np.ndarray,
+    artifact_intensity: float
+) -> np.ndarray:
+    for i in range(3):  # For each RGB channel
+        channel = base_arr[:, :, i]
+        noise = np.random.normal(0, 1, channel.shape)
+        artifact_mask = expanded_mask * noise * artifact_intensity
+        channel += artifact_mask * channel  # Apply relative noise
+        channel = np.clip(channel, 0, 255)
+        base_arr[:, :, i] = channel
+    return base_arr
 
 def apply_watermark_with_artifacts(
     base: Image.Image,
@@ -642,13 +554,7 @@ def apply_watermark_with_artifacts(
     expanded_mask = convolve(alpha_mask > 0, kernel) / kernel.sum()
 
     # Apply artifacts only where the mask is expanded
-    for i in range(3):  # For each RGB channel
-        channel = base_arr[:, :, i]
-        noise = np.random.normal(0, 1, channel.shape)
-        artifact_mask = expanded_mask * noise * artifact_intensity
-        channel += artifact_mask * channel  # Apply relative noise
-        channel = np.clip(channel, 0, 255)
-        base_arr[:, :, i] = channel
+    base_arr = apply_overlay_with_artifacts(base_arr, expanded_mask, artifact_intensity)
 
     # Convert to linear color space
     overlay_linear = srgb_to_linear(overlay_arr[:, :, :3] / 255.0)
