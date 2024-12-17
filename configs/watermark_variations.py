@@ -6,6 +6,7 @@ import random
 from typing import Union
 from utils.watermark import ArtifactsConfig
 
+
 def artifacts_variation():
     return ArtifactsConfig(
         alpha=random.uniform(0.55, 0.77),
@@ -29,8 +30,8 @@ def logo_milios():
     return {
         'watermark_id': 'logo_milios',
         'occupancy': 0,
-        'scale': random.uniform(0.63, 0.93), # => 0.78 +- 0.15
-        'alpha': random.uniform(0.33, 1),   # => 0.67 +- 0.33
+        'scale': random.uniform(0.63, 0.93),  # => 0.78 +- 0.15
+        'alpha': random.uniform(0.33, 1),     # => 0.67 +- 0.33
         'position': 'random',
         'application_type': 'stamp',
     }
@@ -51,7 +52,8 @@ def milios_map_edgecase():
     """
     Simulates an edge case where the watermark is placed at the top or bottom of the image and not fully visible / cropped off.
     """
-    move_to_bottom = random.choice([0, -512 + 17]) # +17 to avoid moving the main watermark totally out of the image
+    move_to_bottom = random.choice(
+        [0, -512 + 17])  # +17 to avoid moving the main watermark totally out of the image
     x = random.randint(383, 383 + 512) // 2
     y = (random.uniform(1393, 1431) + move_to_bottom) // 2
     return {
@@ -69,9 +71,11 @@ def milios_map_around_center():
     Focusses on cases where the center of the watermark map (which differs a little from the rest of the watermark) is placed somewhere in the image.
     It is purposely possible to be cropped off to the left or right, but not to the top or bottom because that's handled by the edgecase.
     """
-    
-    x = random.randint(383, 383 + 512) // 2 # 512 is 2x the width of the base image => 256 after halving = exactly the width of the base image
-    y = random.uniform(1390 - 512 + 150, 1390) // 2 # 75 is the height of the center feature in the watermark map
+
+    # 512 is 2x the width of the base image => 256 after halving = exactly the width of the base image
+    x = random.randint(383, 383 + 512) // 2
+    # 75 is the height of the center feature in the watermark map
+    y = random.uniform(1390 - 512 + 150, 1390) // 2
     return {
         'watermark_id': 'map_43',
         'occupancy': 0,
@@ -111,36 +115,36 @@ def get_watermark_variations():
     variants.append(milios_map_center())            # 8
 
     weights = [
-        1, # logo_ppco
-        1, # logo_mr
-        1, # logo_mreb
-        1, # logo_mrlnb
-        1, # logo_milios
-        6, # milios_map
-        2, # milios_map_edgecase
-        2, # milios_map_around_center
-        1, # milios_map_center
+        1,  # logo_ppco
+        1,  # logo_mr
+        1,  # logo_mreb
+        1,  # logo_mrlnb
+        1,  # logo_milios
+        6,  # milios_map
+        2,  # milios_map_edgecase
+        2,  # milios_map_around_center
+        1,  # milios_map_center
     ]
 
     # Fine-tuning weights
     weights = [
-        0, # logo_ppco
-        0, # logo_mr
-        0, # logo_mreb
-        0, # logo_mrlnb
-        2, # logo_milios
-        8, # milios_map
-        4, # milios_map_edgecase
-        4, # milios_map_around_center
-        1, # milios_map_center
+        0,  # logo_ppco
+        0,  # logo_mr
+        0,  # logo_mreb
+        0,  # logo_mrlnb
+        2,  # logo_milios
+        8,  # milios_map
+        4,  # milios_map_edgecase
+        4,  # milios_map_around_center
+        1,  # milios_map_center
     ]
 
     if len(variants) != len(weights):
-        raise ValueError("The number of watermark variations and their weights must be the same.")
+        raise ValueError(
+            "The number of watermark variations and their weights must be the same.")
 
     return variants, weights
 
 
 def get_watermark_validation_variation():
     return milios_map_center()
-

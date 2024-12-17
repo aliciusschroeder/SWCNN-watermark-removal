@@ -25,6 +25,7 @@ def str_to_mode(mode: str) -> ModeType:
     else:
         raise ValueError(f"Invalid mode: {mode}")
 
+
 default_args = DataPreparationConfiguration()
 
 parser = argparse.ArgumentParser(description="Prepare Data")
@@ -49,7 +50,7 @@ parser.add_argument("--seed", type=int, default=default_args.seed,
 
 
 parsed_args = parser.parse_args()
-sampling_method : SamplingMethodType = 'default' if parsed_args.sampling_method == 'default' else 'mixed'
+sampling_method: SamplingMethodType = 'default' if parsed_args.sampling_method == 'default' else 'mixed'
 max_samples = (parsed_args.max_t_samples, parsed_args.max_v_samples)
 
 config = get_config('configs/config.yaml')
@@ -59,7 +60,8 @@ if not os.path.exists(data_path):
 
 
 def main():
-    step = input("Prepare data for training + validation or test? (_train_/test): ")
+    step = input(
+        "Prepare data for training + validation or test? (_train_/test): ")
     if not step in ['train', 'test']:
         if not step:
             step = 'train'
@@ -82,7 +84,12 @@ def main():
     elif step == 'test':
         clean_path = os.path.join(data_path, "test", "clean")
         watermarked_path = os.path.join(data_path, "test", "watermarked")
-        DataPreparation.prepare_test_data(data_path, clean_path, watermarked_path, parsed_args.mode)
+        DataPreparation.prepare_test_data(
+            data_path=data_path,
+            clean_path=clean_path,
+            watermarked_path=watermarked_path,
+            mode=parsed_args.mode
+        )
 
 
 if __name__ == "__main__":

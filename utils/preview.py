@@ -100,5 +100,5 @@ class PreviewManager:
 if __name__ == "__main__":
     pm = PreviewManager()
     for i in range(16):
-        pm.add_image(Image.new("RGBA", (255, 255), color="red"))
+        pm.add_image(Image.new("RGBA", (255, 255), color="red")) # type: ignore
     pm.show_pools()

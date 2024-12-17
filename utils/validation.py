@@ -22,22 +22,25 @@ from skimage.metrics import (
         SSIM += compare_ssim(Iclean[i, :, :, :], Img[i, :, :, :], data_range=data_range,
                              multichannel=True)
     return (SSIM / Img.shape[0]) """
+
+
 def batch_SSIM(img, imclean, data_range):
     return 0
 
+
 def batch_RMSE(
-    img: TorchTensorType, 
-    imclean: TorchTensorType, 
+    img: TorchTensorType,
+    imclean: TorchTensorType,
     data_range: float
 ) -> float:
     """
     Compute the Root Mean Squared Error (RMSE) for a batch of images.
-    
+
     Args:
         img (torch.Tensor): Noisy images batch, values normalized between 0 and 1.
         imclean (torch.Tensor): Clean images batch, values normalized between 0 and 1.
         data_range (float): The data range of the input images.
-        
+
     Returns:
         float: The average RMSE for the batch.
     """
@@ -51,18 +54,18 @@ def batch_RMSE(
 
 
 def batch_PSNR(
-    img: TorchTensorType, 
-    imclean: TorchTensorType, 
+    img: TorchTensorType,
+    imclean: TorchTensorType,
     data_range: float
 ) -> float:
     """
     Compute the Peak Signal-to-Noise Ratio (PSNR) for a batch of images.
-    
+
     Args:
         img (torch.Tensor): Noisy images batch, values normalized between 0 and 1.
         imclean (torch.Tensor): Clean images batch, values normalized between 0 and 1.
         data_range (float): The data range of the input images.
-        
+
     Returns:
         float: The average PSNR for the batch.
     """
@@ -70,6 +73,6 @@ def batch_PSNR(
     Iclean = imclean.data.cpu().numpy().astype(np.float32)
     PSNR = 0
     for i in range(Img.shape[0]):
-        PSNR += compare_psnr(Iclean[i, :, :, :], Img[i, :, :, :], data_range=data_range)
+        PSNR += compare_psnr(Iclean[i, :, :, :],
+                             Img[i, :, :, :], data_range=data_range)
     return PSNR / Img.shape[0]
-

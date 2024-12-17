@@ -29,6 +29,7 @@ class TrainingConfig:
         ]
         return "_".join(components)
 
+
 @dataclass
 class ResumeOptions:
     """Configuration parameters for resuming training from a checkpoint."""

@@ -6,6 +6,7 @@ from torch import device as torchdevice
 from torch.cuda import is_available as cuda_is_available
 from torchvision.models import VGG16_Weights
 
+
 def load_froze_vgg16() -> DataParallel:
     """
     Load a frozen VGG16 model wrapped in nn.DataParallel.
@@ -20,7 +21,8 @@ def load_froze_vgg16() -> DataParallel:
     net_vgg = VGG16()
     model_dict = net_vgg.state_dict()
     pretrained_dict = model_pretrain_vgg.state_dict()
-    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+    pretrained_dict = {k: v for k,
+                       v in pretrained_dict.items() if k in model_dict}
 
     # Load Parameters
     net_vgg.load_state_dict(pretrained_dict)

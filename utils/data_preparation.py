@@ -50,8 +50,8 @@ class DataPreparation():
         if step == 'validation':
             filename = 'val'
         else:
-            filename = step # 'train' or 'test'
-            
+            filename = step  # 'train' or 'test'
+
         if mode == 'color':
             filename += '_color'
         filename += '.h5'
@@ -292,10 +292,12 @@ class DataPreparation():
             choice = np.random.choice([1, 2])
         else:
             choice = np.random.choice(
-                [1, 2], 
+                [1, 2],
                 p=[
-                    (max_samples[0] - sample_count[0]) / (max_samples[0] + max_samples[1] - sum(sample_count)), 
-                    (max_samples[1] - sample_count[1]) / (max_samples[0] + max_samples[1] - sum(sample_count))
+                    (max_samples[0] - sample_count[0]) /
+                    (max_samples[0] + max_samples[1] - sum(sample_count)),
+                    (max_samples[1] - sample_count[1]) /
+                    (max_samples[0] + max_samples[1] - sum(sample_count))
                 ]
             )
         return results[choice]
@@ -362,34 +364,41 @@ class DataPreparation():
                             normalized_img, win=patch_size, stride=stride)
 
                         logger.info(
-                            f"Processing file: {file_path}, scale: {scale:.1f}, "
+                            f"Processing file: {file_path}, " +
+                            f"scale: {scale:.1f}, " +
                             f"# samples: {patches.shape[3] * aug_times}"
                         )
 
                         for n in range(patches.shape[3]):
                             data = patches[:, :, :, n].copy()
-                            selection, sample_count = DataPreparation.select_bucket(sample_count, max_samples)
+                            selection, sample_count = DataPreparation.select_bucket(
+                                sample_count, max_samples)
                             if selection == 0:
                                 return sample_count
                             if selection == 1:
-                                h5f_train.create_dataset(str(sample_count[0]), data=data)
+                                h5f_train.create_dataset(
+                                    str(sample_count[0]), data=data)
                             elif selection == 2:
-                                h5f_val.create_dataset(str(sample_count[1]), data=data)
+                                h5f_val.create_dataset(
+                                    str(sample_count[1]), data=data)
                             else:
                                 raise ValueError("Invalid selection")
 
-
                             for m in range(aug_times - 1):
-                                selection, sample_count = DataPreparation.select_bucket(sample_count, max_samples)
+                                selection, sample_count = DataPreparation.select_bucket(
+                                    sample_count, max_samples)
                                 augmented_data = data_augmentation(
                                     data, np.random.randint(1, 8))
-                                aug_key = f"{sample_count[selection-1]}_aug_{m + 1}"
+                                aug_key = f"{
+                                    sample_count[selection-1]}_aug_{m + 1}"
                                 if selection == 0:
                                     return sample_count
                                 if selection == 1:
-                                    h5f_train.create_dataset(aug_key, data=augmented_data)
+                                    h5f_train.create_dataset(
+                                        aug_key, data=augmented_data)
                                 elif selection == 2:
-                                    h5f_val.create_dataset(aug_key, data=augmented_data)
+                                    h5f_val.create_dataset(
+                                        aug_key, data=augmented_data)
                                 else:
                                     raise ValueError("Invalid selection")
 
@@ -450,14 +459,17 @@ class DataPreparation():
         """
         h5f_path = DataPreparation.get_h5_filepath(data_path, 'test', mode)
         clean_files = sorted(glob.glob(os.path.join(clean_path, "*.jpg")))
-        watermarked_files = sorted(glob.glob(os.path.join(watermarked_path, "*.jpg")))
+        watermarked_files = sorted(
+            glob.glob(os.path.join(watermarked_path, "*.jpg")))
 
         if len(clean_files) != len(watermarked_files):
-            raise ValueError("Number of clean and watermarked images must be the same.")
+            raise ValueError(
+                "Number of clean and watermarked images must be the same.")
 
         with h5py.File(h5f_path, 'w') as h5f:
             for i, (clean_file, watermarked_file) in enumerate(zip(clean_files, watermarked_files)):
-                print(f"Processing pair {i+1}/{len(clean_files)}: {clean_file}, {watermarked_file}")
+                print(f"Processing pair {i+1}/{len(clean_files)}: "+
+                      f"{clean_file}, {watermarked_file}")
 
                 clean_img = cv2.imread(clean_file)
                 watermarked_img = cv2.imread(watermarked_file)
@@ -470,20 +482,24 @@ class DataPreparation():
                     print(
                         f"  Error: Image shapes do not match. Skipping pair.")
                     continue
-                
+
                 if mode == 'gray':
                     clean_img = cv2.cvtColor(clean_img, cv2.COLOR_BGR2GRAY)
-                    watermarked_img = cv2.cvtColor(watermarked_img, cv2.COLOR_BGR2GRAY)
+                    watermarked_img = cv2.cvtColor(
+                        watermarked_img, cv2.COLOR_BGR2GRAY)
                     clean_img = np.expand_dims(clean_img, axis=0)
                     watermarked_img = np.expand_dims(watermarked_img, axis=0)
                 else:
                     clean_img = cv2.cvtColor(clean_img, cv2.COLOR_BGR2RGB)
-                    watermarked_img = cv2.cvtColor(watermarked_img, cv2.COLOR_BGR2RGB)
+                    watermarked_img = cv2.cvtColor(
+                        watermarked_img, cv2.COLOR_BGR2RGB)
                     clean_img = clean_img.transpose((2, 0, 1))
                     watermarked_img = watermarked_img.transpose((2, 0, 1))
 
-                clean_img = DataPreparation.normalize(clean_img.astype(np.float32))
-                watermarked_img = DataPreparation.normalize(watermarked_img.astype(np.float32))
+                clean_img = DataPreparation.normalize(
+                    clean_img.astype(np.float32))
+                watermarked_img = DataPreparation.normalize(
+                    watermarked_img.astype(np.float32))
 
                 h5f.create_dataset(str(i * 2), data=clean_img)
                 h5f.create_dataset(str(i * 2 + 1), data=watermarked_img)

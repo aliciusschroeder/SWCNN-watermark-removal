@@ -19,7 +19,8 @@ from math import ceil
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="SWCNN Inference Script with Patch Processing")
+    parser = argparse.ArgumentParser(
+        description="SWCNN Inference Script with Patch Processing")
     parser.add_argument('--config', type=str, default='configs/config.yaml',
                         help="Path to the configuration YAML file.")
     parser.add_argument('--model_path', type=str, required=True,
@@ -260,7 +261,8 @@ def main():
     # Preprocess the image: extract patches
     patches_tensor, positions, padded_size, pad, original_size = preprocess_image(
         args.input_image, patch_size=256, stride=128, device=device.type)
-    print(f"Input image loaded and preprocessed. Original size: {original_size}, Padded size: {padded_size}")
+    print(f"Input image loaded and preprocessed. Original size: {
+          original_size}, Padded size: {padded_size}")
 
     processed_patches = []
     batch_size = 16  # Adjust based on GPU memory
@@ -270,15 +272,20 @@ def main():
     with torch.no_grad():
         for i in range(0, num_patches, batch_size):
             batch_patches = patches_tensor[i:i + batch_size]
-            batch = torch.cat(batch_patches, dim=0)  # Shape: batch_size x C x H x W
+            # Shape: batch_size x C x H x W
+            batch = torch.cat(batch_patches, dim=0)
             outputs = model(batch)  # Assuming model outputs in the same scale
             outputs = torch.clamp(outputs, 0.0, 1.0)
             outputs_np = outputs.cpu().numpy()
             # Convert back to list of numpy arrays
             for j in range(outputs_np.shape[0]):
-                patch = np.transpose(outputs_np[j], (1, 2, 0))  # C x H x W -> H x W x C
+                # C x H x W -> H x W x C
+                patch = np.transpose(outputs_np[j], (1, 2, 0))
                 processed_patches.append(patch)
-            print(f"Processed batch {i // batch_size + 1} / {ceil(num_patches / batch_size)}")
+            batch_nr = i // batch_size + 1
+            total_batches = ceil(num_patches / batch_size)
+            print(f"Processed batch {batch_nr}" +
+                  f" / {total_batches}")
 
     print("All patches processed. Reconstructing the final image.")
 
@@ -290,7 +297,8 @@ def main():
     # Postprocess to get the final output image
     output_image = postprocess_image(
         reconstructed_padded, original_size, pad)
-    print(f"Postprocessing completed. Saving output image to {args.output_image}")
+    print(f"Postprocessing completed. Saving output" +
+          f"image to {args.output_image}")
 
     cv2.imwrite(args.output_image, output_image)
     print("Output image saved successfully.")

@@ -1,41 +1,43 @@
 import torch
 import torch.nn as nn
 
+
 class DnCNN(nn.Module):
     """
     DnCNN: A Deep Convolutional Neural Network for Image Denoising.
 
     This network is designed to remove noise from images by learning the residual noise.
     It consists of multiple convolutional layers with ReLU activations and batch normalization.
-    
+
     Args:
         channels (int): Number of input and output channels (e.g., 1 for grayscale, 3 for RGB).
         num_of_layers (int, optional): Total number of convolutional layers. Defaults to 17.
     """
+
     def __init__(self, channels, num_of_layers=17):
         super(DnCNN, self).__init__()
         kernel_size = 3
         padding = 1
         features = 64
         layers = []
-        
+
         # Initial convolution layer without batch normalization
-        layers.append(nn.Conv2d(in_channels=channels, out_channels=features, kernel_size=kernel_size, 
+        layers.append(nn.Conv2d(in_channels=channels, out_channels=features, kernel_size=kernel_size,
                                 padding=padding, bias=False))
         layers.append(nn.ReLU(inplace=True))
-        
+
         # Intermediate layers with batch normalization
         for _ in range(num_of_layers - 2):
             layers.append(
-                nn.Conv2d(in_channels=features, out_channels=features, kernel_size=kernel_size, 
+                nn.Conv2d(in_channels=features, out_channels=features, kernel_size=kernel_size,
                           padding=padding, bias=False))
             layers.append(nn.BatchNorm2d(features))
             layers.append(nn.ReLU(inplace=True))
-        
+
         # Final convolution layer to map back to the original number of channels
-        layers.append(nn.Conv2d(in_channels=features, out_channels=channels, kernel_size=kernel_size, 
+        layers.append(nn.Conv2d(in_channels=features, out_channels=channels, kernel_size=kernel_size,
                                 padding=padding, bias=False))
-        
+
         self.dncnn = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -57,35 +59,36 @@ class DnCNN_RL(nn.Module):
     DnCNN_RL: DnCNN with Residual Learning for Image Denoising.
 
     This variant of DnCNN adds the input to the network's output, enabling the network to learn the residual noise.
-    
+
     Args:
         channels (int): Number of input and output channels.
         num_of_layers (int, optional): Total number of convolutional layers. Defaults to 17.
     """
+
     def __init__(self, channels, num_of_layers=17):
         super(DnCNN_RL, self).__init__()
         kernel_size = 3
         padding = 1
         features = 64
         layers = []
-        
+
         # Initial convolution layer without batch normalization
-        layers.append(nn.Conv2d(in_channels=channels, out_channels=features, kernel_size=kernel_size, 
+        layers.append(nn.Conv2d(in_channels=channels, out_channels=features, kernel_size=kernel_size,
                                 padding=padding, bias=False))
         layers.append(nn.ReLU(inplace=True))
-        
+
         # Intermediate layers with batch normalization
         for _ in range(num_of_layers - 2):
             layers.append(
-                nn.Conv2d(in_channels=features, out_channels=features, kernel_size=kernel_size, 
+                nn.Conv2d(in_channels=features, out_channels=features, kernel_size=kernel_size,
                           padding=padding, bias=False))
             layers.append(nn.BatchNorm2d(features))
             layers.append(nn.ReLU(inplace=True))
-        
+
         # Final convolution layer to map back to the original number of channels
-        layers.append(nn.Conv2d(in_channels=features, out_channels=channels, kernel_size=kernel_size, 
+        layers.append(nn.Conv2d(in_channels=features, out_channels=channels, kernel_size=kernel_size,
                                 padding=padding, bias=False))
-        
+
         self.dncnn = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -109,24 +112,25 @@ class VGG16(nn.Module):
     This class implements the convolutional layers of the VGG16 network up to the second max-pooling layer.
     It is typically used for feature extraction purposes.
     """
+
     def __init__(self):
         super(VGG16, self).__init__()
         layers = []
-        
+
         # Block 1: Conv -> ReLU -> Conv -> ReLU -> MaxPool
         layers.append(nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1))
         layers.append(nn.ReLU(inplace=True))
         layers.append(nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1))
         layers.append(nn.ReLU(inplace=True))
         layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
-        
+
         # Block 2: Conv -> ReLU -> Conv -> ReLU -> MaxPool
         layers.append(nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1))
         layers.append(nn.ReLU(inplace=True))
         layers.append(nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1))
         layers.append(nn.ReLU(inplace=True))
         layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
-        
+
         self.features = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -149,11 +153,12 @@ class HN(nn.Module):
 
     This network follows a U-Net-like architecture with encoding and decoding blocks.
     It is designed for tasks such as image segmentation or image restoration.
-    
+
     Args:
         in_channels (int, optional): Number of input channels. Defaults to 3.
         out_channels (int, optional): Number of output channels. Defaults to 3.
     """
+
     def __init__(self, in_channels=3, out_channels=3):
         super(HN, self).__init__()
 
@@ -177,7 +182,8 @@ class HN(nn.Module):
         self._block3 = nn.Sequential(
             nn.Conv2d(48, 48, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(48, 48, kernel_size=3, stride=2, padding=1, output_padding=1)
+            nn.ConvTranspose2d(48, 48, kernel_size=3,
+                               stride=2, padding=1, output_padding=1)
         )
 
         # Decoding Block 4: Processes concatenated features and upsamples
@@ -186,7 +192,8 @@ class HN(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(96, 96, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(96, 96, kernel_size=3, stride=2, padding=1, output_padding=1)
+            nn.ConvTranspose2d(96, 96, kernel_size=3,
+                               stride=2, padding=1, output_padding=1)
         )
 
         # Decoding Blocks 3-2: Further processing and upsampling with concatenation
@@ -195,12 +202,14 @@ class HN(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(96, 96, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(96, 96, kernel_size=3, stride=2, padding=1, output_padding=1)
+            nn.ConvTranspose2d(96, 96, kernel_size=3,
+                               stride=2, padding=1, output_padding=1)
         )
 
         # Final Block: Combines all features and produces the output
         self._block6 = nn.Sequential(
-            nn.Conv2d(96 + in_channels, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(96 + in_channels, 64,
+                      kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
@@ -219,7 +228,8 @@ class HN(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Conv2d):
                 if m.weight is not None:
-                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    nn.init.kaiming_normal_(
+                        m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
@@ -242,7 +252,8 @@ class HN(nn.Module):
 
         # Decoder pathway with upsampling and skip connections
         upsample5 = self._block3(pool5)  # Upsample by factor of 2
-        concat5 = torch.cat((upsample5, pool4), dim=1)  # Concatenate skip connection
+        # Concatenate skip connection
+        concat5 = torch.cat((upsample5, pool4), dim=1)
         upsample4 = self._block4(concat5)  # Upsample by factor of 2
         concat4 = torch.cat((upsample4, pool3), dim=1)
         upsample3 = self._block5(concat4)  # Upsample by factor of 2
@@ -250,7 +261,8 @@ class HN(nn.Module):
         upsample2 = self._block5(concat3)  # Upsample by factor of 2
         concat2 = torch.cat((upsample2, pool1), dim=1)
         upsample1 = self._block5(concat2)  # Upsample by factor of 2
-        concat1 = torch.cat((upsample1, x), dim=1)  # Final concatenation with input
+        # Final concatenation with input
+        concat1 = torch.cat((upsample1, x), dim=1)
 
         # Final processing to generate output
         return self._block6(concat1)
