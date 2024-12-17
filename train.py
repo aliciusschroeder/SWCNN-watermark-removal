@@ -38,7 +38,7 @@ from torch.utils.tensorboard import SummaryWriter # type: ignore
 from configs.tensorboard import TensorBoardConfig
 from configs.training import TrainingConfig, ResumeOptions
 from configs.watermark_variations import get_watermark_validation_variation, get_watermark_variations
-from dataset import Dataset
+from dataset import Dataset, TestDataset
 from models import HN
 from utils.helper import get_config
 from utils.train_preparation import load_froze_vgg16
@@ -166,10 +166,12 @@ class WatermarkCleaner:
 
     def _init_datasets(self) -> None:
         """Initialize training and validation datasets."""
-        self.train_dataset = Dataset(train=True, mode='color', 
-                                   data_path=self.config.data_path)
+        self.train_dataset = Dataset(train=True, mode='color',
+                                     data_path=self.config.data_path)
         self.val_dataset = Dataset(train=False, mode='color', 
-                                 data_path=self.config.data_path)
+                                   data_path=self.config.data_path)
+        self.test_dataset = TestDataset(mode='color',
+                                        data_path=self.config.data_path)
         
         self.train_loader = DataLoader(
             dataset=self.train_dataset,
@@ -180,6 +182,13 @@ class WatermarkCleaner:
             pin_memory=True
         )
 
+        self.test_loader = DataLoader(
+            dataset=self.test_dataset,
+            batch_size=self.config.batch_size,
+            shuffle=False,
+            num_workers=8,
+            pin_memory=True
+        )
 
     def _apply_watermark_val(
             self,
@@ -352,7 +361,67 @@ class WatermarkCleaner:
         avg_psnr = total_psnr / len(self.val_dataset)
         self.writer.add_scalar("Epoch_Metrics_Val/PSNR_avg", avg_psnr, epoch + 1)
         return avg_psnr
-    
+
+    def evaluate_test(self, epoch: int) -> None:
+        """
+        Evaluates the model on the test dataset and logs the results to Tensorboard.
+        
+        Args:
+            epoch (int): The current epoch number.
+        """
+        self.model.eval()
+        avg_psnr_test = 0.0
+        test_losses = {'reconstruction': 0.0, 'perceptual': 0.0, 'total': 0.0}
+
+        with torch.no_grad():
+            for i, (clean_img, watermarked_img) in enumerate(self.test_loader):
+                # Ensure dimensions are multiples of 32
+                _, _, w, h = clean_img.shape
+                w, h = (int(dim // 32 * 32) for dim in (w, h))
+                clean_img = clean_img[:, :, :w, :h]
+                watermarked_img = watermarked_img[:, :, :w, :h]
+
+                clean_img, watermarked_img = clean_img.to(self.device), watermarked_img.to(self.device)
+                output = torch.clamp(self.model(watermarked_img), 0., 1.)
+
+                # Calculate PSNR for test set
+                avg_psnr_test += batch_PSNR(output, clean_img, 1.)
+
+                # Calculate losses for test set
+                reconstruction_loss = self.criterion(output, clean_img) / clean_img.size(0) * 2
+                test_losses['reconstruction'] += reconstruction_loss.item()
+
+                if self.config.use_perceptual_loss:
+                    output_features = self.vgg_model(output)
+                    target_features = self.vgg_model(clean_img)
+                    perceptual_loss = 0.024 * self.criterion(output_features, target_features) / (
+                                target_features.size(0) / 2)
+                    test_losses['perceptual'] += perceptual_loss.item()
+                    test_losses['total'] += reconstruction_loss.item() + perceptual_loss.item()
+                else:
+                    test_losses['total'] += reconstruction_loss.item()
+
+                # Log a few sample images from the test set to Tensorboard
+                if i < self.tb_config.test_batches_to_save:  # Log images from the first batch
+                    img_grid = vutils.make_grid(
+                        torch.cat([watermarked_img, output, clean_img]),
+                        nrow=self.config.batch_size,
+                        normalize=True
+                    )
+                    self.writer.add_image(f'Images_Test/Epoch_{epoch + 1}_Sample_{i + 1}', img_grid, self.global_step)
+
+        # Calculate and log average PSNR for the test set
+        avg_psnr_test /= len(self.test_loader)
+        self.writer.add_scalar('Epoch_Metrics_Test/PSNR_avg', avg_psnr_test, epoch + 1)
+
+        # Calculate and log average losses for the test set
+        num_test_batches = len(self.test_loader)
+        for loss_name, loss_sum in test_losses.items():
+            if loss_name == 'total' or self.tb_config.log_detailed_losses_test:
+                avg_loss = loss_sum / num_test_batches
+                self.writer.add_scalar(f'Epoch_Metrics_Test/{loss_name}_loss_avg', avg_loss, epoch + 1)
+        if PRINT_DURING_TRAINING:
+            print(f"[epoch {epoch + 1}] Test PSNR: {avg_psnr_test:.4f}")    
 
     def _epoch_is_saveworthy(self, epoch: int, is_best: bool) -> bool:
         """Determine if the current epoch should be saved to disk."""
@@ -425,7 +494,7 @@ class WatermarkCleaner:
             ], normalize=True, nrow=3)
             
             self.writer.add_image(
-                f'Images_Train/epoch_{epoch}_batch_{batch_step}',
+                f'Images_Train/epoch_{epoch + 1}_batch_{batch_step}',
                 img_grid,
                 global_step
             )
@@ -450,7 +519,6 @@ class WatermarkCleaner:
             }
             epoch_psnr = 0.0
 
-            # self._adjust_learning_rate(epoch)
             self.log_learning_rate(epoch)
             
             for i, img in enumerate(self.train_loader):
@@ -492,6 +560,10 @@ class WatermarkCleaner:
                 self._save_model(epoch, is_best=True)
             else:
                 self._save_model(epoch, is_best=False)
+
+            if (epoch + 1) % self.tb_config.test_nth_epoch == 0:
+                self.evaluate_test(epoch)
+
             if PRINT_DURING_TRAINING:
                 print(f"\n[epoch {epoch + 1}] "
                     f"Avg_loss: {epoch_losses['total']/num_batches:.4f} "

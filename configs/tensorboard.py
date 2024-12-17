@@ -14,3 +14,12 @@ class TensorBoardConfig:
     log_parameter_histograms: bool = False
     log_gradient_norms: bool = False
     log_hyperparameters: bool = False
+
+    # exclusive of epoch/step 0
+    save_checkpoint_nth_epoch: int = 5
+    save_images_nth_epoch: int = 5
+    save_images_nth_global_step: int = 100
+    test_nth_epoch: int = 5
+
+    # number of batches to save to tensorboard during testing
+    test_batches_to_save: int = 3
