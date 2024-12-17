@@ -1,12 +1,11 @@
 import argparse
-from dataclasses import dataclass
 import os
 from typing import List, Union
 
-from utils.helper import ModeType
-from utils.helper import get_config
 from utils.data_preparation import DataPreparation
+from utils.helper import ModeType, get_config
 from configs.preparation import DataPreparationConfiguration, SamplingMethodType
+from dataclasses import dataclass
 
 
 @dataclass
@@ -28,7 +27,7 @@ def str_to_mode(mode: str) -> ModeType:
 
 default_args = DataPreparationConfiguration()
 
-parser = argparse.ArgumentParser(description="SWCNN")
+parser = argparse.ArgumentParser(description="Prepare Data")
 parser.add_argument("--scales", nargs='+', default=default_args.scales,
                     help='scales for image pyramid')
 parser.add_argument("--patch_size", type=int, default=default_args.patch_size,
@@ -60,17 +59,30 @@ if not os.path.exists(data_path):
 
 
 def main():
-    DataPreparation.prepare_data(
-        data_path=config['data_path'],
-        patch_size=parsed_args.patch_size,
-        stride=parsed_args.stride,
-        aug_times=parsed_args.aug_times,
-        mode=parsed_args.mode,
-        scales=parsed_args.scales,
-        max_samples=max_samples,
-        sampling_method=sampling_method,
-        seed=parsed_args.seed
-    )
+    step = input("Prepare data for training + validation or test? (_train_/test): ")
+    if not step in ['train', 'test']:
+        if not step:
+            step = 'train'
+        else:
+            raise ValueError(f"Invalid step: {step}")
+
+    if step == 'train':
+        DataPreparation.prepare_data(
+            data_path=config['data_path'],
+            patch_size=parsed_args.patch_size,
+            stride=parsed_args.stride,
+            aug_times=parsed_args.aug_times,
+            mode=parsed_args.mode,
+            scales=parsed_args.scales,
+            max_samples=max_samples,
+            sampling_method=sampling_method,
+            seed=parsed_args.seed
+        )
+
+    elif step == 'test':
+        clean_path = os.path.join(data_path, "test", "clean")
+        watermarked_path = os.path.join(data_path, "test", "watermarked")
+        DataPreparation.prepare_test_data(data_path, clean_path, watermarked_path, parsed_args.mode)
 
 
 if __name__ == "__main__":

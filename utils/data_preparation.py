@@ -2,7 +2,7 @@ import glob
 import logging
 import os
 import random
-from typing import List, Literal, Tuple, Union
+from typing import List, Tuple, Union
 
 import cv2
 import h5py
@@ -10,11 +10,8 @@ import numpy as np
 
 from configs.preparation import SamplingMethodType
 from utils.data_augmentation import data_augmentation
-from utils.helper import ModeType
+from utils.helper import ModeType, StepType
 from utils.image import im2patch
-
-
-StepType = Literal['train', 'validation']
 
 
 class DataPreparation():
@@ -43,13 +40,18 @@ class DataPreparation():
 
         Args:
             data_path (str): Base directory path.
-            step (StepType): 'train' or 'validation'.
+            step (StepType): 'train', 'validation' or 'test'.
             mode (ModeType, optional): 'gray' or 'color'. Defaults to 'color'.
 
         Returns:
             str: Full path to the HDF5 file.
         """
-        filename = "train" if step == 'train' else "val"
+
+        if step == 'validation':
+            filename = 'val'
+        else:
+            filename = step # 'train' or 'test'
+            
         if mode == 'color':
             filename += '_color'
         filename += '.h5'
@@ -298,7 +300,6 @@ class DataPreparation():
             )
         return results[choice]
 
-
     @staticmethod
     def _process_files_mixed(
         files: List[str],
@@ -395,7 +396,6 @@ class DataPreparation():
                 return sample_count
 
     # Use this method instead of _process_files for validation data if you want to skip patching
-
     @staticmethod
     def _process_validation_files(
         files: List[str],
@@ -431,3 +431,59 @@ class DataPreparation():
                 h5f.create_dataset(str(val_count), data=normalized_img)
                 val_count += 1
             logger.info(f"Validation set, # samples: {val_count}")
+
+    @staticmethod
+    def prepare_test_data(
+        data_path: str,
+        clean_path: str,
+        watermarked_path: str,
+        mode: ModeType = 'color',
+    ) -> None:
+        """
+        Prepares the test dataset by pairing clean and watermarked images and saving them into an HDF5 file.
+
+        Args:
+            data_path (str): Base directory path.
+            clean_path (str): Path to the directory containing clean images.
+            watermarked_path (str): Path to the directory containing watermarked images.
+            mode (ModeType, optional): 'gray' or 'color'. Defaults to 'color'.
+        """
+        h5f_path = DataPreparation.get_h5_filepath(data_path, 'test', mode)
+        clean_files = sorted(glob.glob(os.path.join(clean_path, "*.jpg")))
+        watermarked_files = sorted(glob.glob(os.path.join(watermarked_path, "*.jpg")))
+
+        if len(clean_files) != len(watermarked_files):
+            raise ValueError("Number of clean and watermarked images must be the same.")
+
+        with h5py.File(h5f_path, 'w') as h5f:
+            for i, (clean_file, watermarked_file) in enumerate(zip(clean_files, watermarked_files)):
+                print(f"Processing pair {i+1}/{len(clean_files)}: {clean_file}, {watermarked_file}")
+
+                clean_img = cv2.imread(clean_file)
+                watermarked_img = cv2.imread(watermarked_file)
+
+                if clean_img is None or watermarked_img is None:
+                    print(f"  Error: Could not read image files. Skipping pair.")
+                    continue
+
+                if clean_img.shape != watermarked_img.shape:
+                    print(
+                        f"  Error: Image shapes do not match. Skipping pair.")
+                    continue
+                
+                if mode == 'gray':
+                    clean_img = cv2.cvtColor(clean_img, cv2.COLOR_BGR2GRAY)
+                    watermarked_img = cv2.cvtColor(watermarked_img, cv2.COLOR_BGR2GRAY)
+                    clean_img = np.expand_dims(clean_img, axis=0)
+                    watermarked_img = np.expand_dims(watermarked_img, axis=0)
+                else:
+                    clean_img = cv2.cvtColor(clean_img, cv2.COLOR_BGR2RGB)
+                    watermarked_img = cv2.cvtColor(watermarked_img, cv2.COLOR_BGR2RGB)
+                    clean_img = clean_img.transpose((2, 0, 1))
+                    watermarked_img = watermarked_img.transpose((2, 0, 1))
+
+                clean_img = DataPreparation.normalize(clean_img.astype(np.float32))
+                watermarked_img = DataPreparation.normalize(watermarked_img.astype(np.float32))
+
+                h5f.create_dataset(str(i * 2), data=clean_img)
+                h5f.create_dataset(str(i * 2 + 1), data=watermarked_img)
