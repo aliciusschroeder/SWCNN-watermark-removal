@@ -27,7 +27,7 @@ if (-not (Check-VirtualEnv)) {
 }
 
 # Define variables
-$InputDirectory = "data/me-marked"
+$InputDirectory = "data/test/watermarked"
 $OutputBaseDirectory = "output/inference_runs"
 
 # Prompt user for the model path
@@ -41,6 +41,7 @@ New-Item -ItemType Directory -Path $OutputDir | Out-Null
 # Get all jpg files from the input directory
 $JpgFiles = Get-ChildItem -Path $InputDirectory -Filter "*.jpg"
 
+# TODO: Replace with a python implementation so we don't need to load the model each time
 # Iterate over each jpg file and perform the Python command
 foreach ($File in $JpgFiles) {
     # Get the output file path
