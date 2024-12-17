@@ -5,9 +5,12 @@ from dataclasses import dataclass
 class TensorBoardConfig:
     """Configuration parameters for Tensorboard logging."""
     log_dir: str = "output/runs"
-    log_detailed_losses: bool = False
+    # log distinct loss components each step / epoch / test
+    log_detailed_losses_step: bool = False
+    log_detailed_losses_epoch: bool = False
+    log_detailed_losses_test: bool = False
+
+    log_model_architecture: bool = False
     log_parameter_histograms: bool = False
     log_gradient_norms: bool = False
-    save_checkpoint_nth_epoch: int = 5  # exclusive of epoch 0
-    save_images_nth_epoch: int = 5  # exclusive of epoch 0
-    save_images_nth_global_step: int = 100  # exclusive of step 0
+    log_hyperparameters: bool = False

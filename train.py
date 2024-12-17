@@ -132,26 +132,27 @@ class WatermarkCleaner:
         
         self.writer = SummaryWriter(log_dir, purge_step=purge_step)
 
-        if self.start_epoch == 0:
+        if self.start_epoch == 0 and self.tb_config.log_model_architecture:
             # Log model architecture
             dummy_input = torch.randn(1, 3, 256, 256).to(self.device)
             self.writer.add_graph(self.model, dummy_input)
 
-        # Log hyperparameters
-        hparams = {
-            "batch_size": self.config.batch_size,
-            "num_layers": self.config.num_layers,
-            "epochs": self.config.epochs,
-            "milestone": self.config.milestone,
-            "initial_lr": self.config.initial_lr,
-            "architecture": self.config.architecture,
-            "loss_type": self.config.loss_type,
-            "self_supervised": self.config.self_supervised,
-            "use_perceptual_loss": self.config.use_perceptual_loss,
-            "gpu_id": self.config.gpu_id,
-            "data_path": self.config.data_path,
-        }
-        self.writer.add_hparams(hparams, {})
+        if self.tb_config.log_hyperparameters:
+            # Log hyperparameters
+            hparams = {
+                "batch_size": self.config.batch_size,
+                "num_layers": self.config.num_layers,
+                "epochs": self.config.epochs,
+                "milestone": self.config.milestone,
+                "initial_lr": self.config.initial_lr,
+                "architecture": self.config.architecture,
+                "loss_type": self.config.loss_type,
+                "self_supervised": self.config.self_supervised,
+                "use_perceptual_loss": self.config.use_perceptual_loss,
+                "gpu_id": self.config.gpu_id,
+                "data_path": self.config.data_path,
+            }
+            self.writer.add_hparams(hparams, {})
 
 
     def _create_model(self) -> nn.Module:
@@ -398,7 +399,7 @@ class WatermarkCleaner:
         
         # Log loss (components/total)
         for loss_name, loss_value in losses.items():
-            if self.tb_config.log_detailed_losses or loss_name == 'total':
+            if self.tb_config.log_detailed_losses_step or loss_name == 'total':
                 self.writer.add_scalar(f"Loss_Train/loss_{loss_name}", loss_value, global_step)
         
         # Log PSNR
@@ -474,7 +475,7 @@ class WatermarkCleaner:
             # Log epoch-level metrics
             num_batches = len(self.train_loader)
             for loss_name, loss_sum in epoch_losses.items():
-                if self.tb_config.log_detailed_losses or loss_name == 'total':
+                if self.tb_config.log_detailed_losses_epoch or loss_name == 'total':
                     avg_loss = loss_sum / num_batches
                     self.writer.add_scalar(f"Epoch_Metrics_Train/{loss_name}_loss_avg",
                                             avg_loss, epoch + 1)
