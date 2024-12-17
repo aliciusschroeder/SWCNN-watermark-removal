@@ -86,6 +86,8 @@ class WatermarkCleaner:
         self.optimizer = optim.Adam(self.model.parameters(), 
                                     lr=self.config.initial_lr)
         
+        self.scheduler = torch.optim.lr_scheduler.ConstantLR(self.optimizer, factor=1.0, total_iters=1)
+        
         self.scaler = GradScaler() # Remove this line if not using mixed precision training
         
         self.watermark_manager = WatermarkManager(
@@ -108,6 +110,7 @@ class WatermarkCleaner:
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.scaler.load_state_dict(checkpoint['scaler_state_dict'])
+        self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         self.start_epoch = checkpoint['epoch'] + 1
         self.global_step = checkpoint['global_step'] + 1
         
@@ -237,6 +240,8 @@ class WatermarkCleaner:
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = current_lr
 
+    
+    def log_learning_rate(self, epoch: int) -> None:
         # Log learning rate
         current_lr = self.optimizer.param_groups[0]['lr']
         self.writer.add_scalar('Learning_Rate', current_lr, epoch + 1)
@@ -370,6 +375,7 @@ class WatermarkCleaner:
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'scaler_state_dict': self.scaler.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
             'epoch': epoch,
             'global_step': self.global_step
         }, pathname)
@@ -443,7 +449,8 @@ class WatermarkCleaner:
             }
             epoch_psnr = 0.0
 
-            self._adjust_learning_rate(epoch)
+            # self._adjust_learning_rate(epoch)
+            self.log_learning_rate(epoch)
             
             for i, img in enumerate(self.train_loader):
                 output, target, losses, psnr = self._train_step(img)
@@ -461,6 +468,8 @@ class WatermarkCleaner:
                         f"loss: {losses['total']:.4f} PSNR_train: {psnr:.4f}")
                 
                 self.global_step += 1
+
+            self.scheduler.step()
 
             # Log epoch-level metrics
             num_batches = len(self.train_loader)
@@ -493,14 +502,16 @@ class WatermarkCleaner:
 
 def main():
     """Entry point for training the watermark removal model."""
+    resume_options = None
     yaml_config = get_config('configs/config.yaml')
+    # resume_options = ResumeOptions(checkpoint_filepath='output/models/HN_per_L1_n2n_035_best.pth', log_dir='output/runs/004-finetune-001') # , log_dir='output/runs/002'
     config = TrainingConfig(
         model_output_path=yaml_config['train_model_out_path_SWCNN'],
         data_path=yaml_config['data_path'],
         batch_size=8,
     )
     
-    trainer = WatermarkCleaner(config)
+    trainer = WatermarkCleaner(config, resume_options=resume_options)
     trainer.train()
 
 
