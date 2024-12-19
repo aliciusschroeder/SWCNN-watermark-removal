@@ -497,6 +497,15 @@ class WatermarkCleaner:
         """Execute the complete training pipeline."""
         print(f'Training on {len(self.train_dataset)} samples')
 
+        input(f"Please confirm the following training configuration:\n" +
+              f"=== Training Config ===\n{self.config}\n\n" +
+              f"=== Tensorboard Config ===\n{self.tb_config}\n\n" +
+              f"=== Resume Options ===\n{self.resume_options}\n\n" +
+              f"=== Scheduler State ===\n{self.scheduler.state_dict()}\n\n" +
+              f"Optimizer LR: {self.optimizer.state_dict()['param_groups'][0]['lr']}\n" +
+              f"Press Enter to continue...")
+        print("Starting training!")
+
         best_psnr = 0.0
         
         for epoch in range(self.start_epoch, self.config.epochs):
