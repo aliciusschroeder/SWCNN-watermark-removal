@@ -3,7 +3,14 @@
 from dataclasses import dataclass
 import os
 import random
+import sys
 from typing import Literal, Union, Optional, Tuple, Dict
+
+if __name__ == "__main__":
+    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    # Add the parent directory to sys.path
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
 
 from PIL import Image
 from matplotlib import pyplot as plt
