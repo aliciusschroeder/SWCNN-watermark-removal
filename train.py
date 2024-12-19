@@ -14,12 +14,8 @@ The training process includes:
 - Periodic validation on a separate dataset
 """
 
-# TODO(high): Think about a more sophisticated LR scheduler, as exponential loss reduction doesn't seem to stop before epoch 40 @ 79 batches @ 8 batch size
 # TODO(medium): Implement validation loss calculation
-# TODO(medium): Look out for possible performance improvements in the training loop
-# TODO(medium): Implement a resume training feature
-# TODO(medium): Develop a fine-tuning strategy
-# TODO(low): Find out if activation statistics could help identify potential issues like vanishing/exploding gradients
+# TODO(medium): Look out for possible performance improvements in the training loop (partly done)
 
 from datetime import datetime
 from pathlib import Path
@@ -192,7 +188,20 @@ class WatermarkCleaner:
         )
 
     def freeze_block(self, block: nn.Module, freeze: bool) -> None:
-        """Freeze or unfreeze a block of the model."""
+        """Freeze or unfreeze a block of the model.
+
+        Args:
+            block: The block of the model to freeze or unfreeze
+            freeze: Whether to freeze the block
+
+        Returns:
+            None
+
+        Example usage (freezing block 1.0):
+            ```
+            self.freeze_block(self.model.module._block1[0], freeze=True)
+            ```      
+        """
         for param in block.parameters():
             param.requires_grad = not freeze
 
