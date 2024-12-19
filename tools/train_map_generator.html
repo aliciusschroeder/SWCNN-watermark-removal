@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Watermark Map Generator</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FileSaver.js für das Speichern von Dateien -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        /* Custom Scrollbar für bessere UX */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555; 
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-6">
+    <div class="max-w-6xl mx-auto bg-white shadow-md rounded p-6">
+        <h1 class="text-3xl font-bold mb-4">Watermark Map Generator</h1>
+        
+        <!-- Logo Upload Section -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Logos Hochladen</h2>
+            <input type="file" id="logoUpload" accept="image/png" multiple class="block mb-4">
+            <div id="logoList" class="space-y-2">
+                <!-- Dynamisch hinzugefügte Logo-Einträge -->
+            </div>
+            <button id="addLogo" class="mt-2 px-4 py-2 bg-blue-500 text-white rounded">Logo Hinzufügen</button>
+        </div>
+        
+        <!-- Patch Configuration -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Patch-Konfiguration</h2>
+            <div class="flex space-x-4">
+                <div>
+                    <label class="block">Patch-Größe (px):</label>
+                    <input type="number" id="patchSize" value="260" class="mt-1 p-2 border rounded w-full">
+                </div>
+                <div>
+                    <label class="block">Patch-Anzahl:</label>
+                    <input type="number" id="patchAmount" value="3" class="mt-1 p-2 border rounded w-full">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Logo Placement Configuration -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Logo Platzierung</h2>
+            <div class="flex space-x-4">
+                <div>
+                    <label class="block">Anzahl der kleinen Logos pro Feld:</label>
+                    <select id="smallLogoCountType" class="mt-1 p-2 border rounded w-full">
+                        <option value="fixed">Fest</option>
+                        <option value="random">Zufälliger Bereich</option>
+                    </select>
+                    <div id="smallLogoFixed" class="mt-2">
+                        <input type="number" id="smallLogoFixedCount" value="5" class="p-2 border rounded w-full" placeholder="Fest Anzahl">
+                    </div>
+                    <div id="smallLogoRandom" class="mt-2 hidden">
+                        <div class="flex space-x-2">
+                            <input type="number" id="smallLogoMin" placeholder="Min" class="p-2 border rounded w-1/2">
+                            <input type="number" id="smallLogoMax" placeholder="Max" class="p-2 border rounded w-1/2">
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block">Layout der kleinen Logos:</label>
+                    <select id="smallLogoLayout" class="mt-1 p-2 border rounded w-full">
+                        <option value="row">Reihen</option>
+                        <option value="grid">Raster</option>
+                        <option value="random">Zufällig</option>
+                        <option value="circle">Kreisförmig</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Randomization Settings -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Randomisierungs-Einstellungen</h2>
+            <div class="flex space-x-4">
+                <!-- Große Logos -->
+                <div class="w-1/2">
+                    <h3 class="font-semibold">Große Logos</h3>
+                    <div class="mt-2">
+                        <label>Skalierung (%):</label>
+                        <div class="flex space-x-2">
+                            <input type="number" id="largeScaleMin" value="90" class="p-2 border rounded w-1/2" placeholder="Min">
+                            <input type="number" id="largeScaleMax" value="110" class="p-2 border rounded w-1/2" placeholder="Max">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label>X Offset (px):</label>
+                        <div class="flex space-x-2">
+                            <input type="number" id="largeOffsetXMin" value="-10" class="p-2 border rounded w-1/2" placeholder="Min">
+                            <input type="number" id="largeOffsetXMax" value="10" class="p-2 border rounded w-1/2" placeholder="Max">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label>Y Offset (px):</label>
+                        <div class="flex space-x-2">
+                            <input type="number" id="largeOffsetYMin" value="-10" class="p-2 border rounded w-1/2" placeholder="Min">
+                            <input type="number" id="largeOffsetYMax" value="10" class="p-2 border rounded w-1/2" placeholder="Max">
+                        </div>
+                    </div>
+                </div>
+                <!-- Kleine Logos -->
+                <div class="w-1/2">
+                    <h3 class="font-semibold">Kleine Logos</h3>
+                    <div class="mt-2">
+                        <label>Skalierung (%):</label>
+                        <div class="flex space-x-2">
+                            <input type="number" id="smallScaleMin" value="80" class="p-2 border rounded w-1/2" placeholder="Min">
+                            <input type="number" id="smallScaleMax" value="120" class="p-2 border rounded w-1/2" placeholder="Max">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label>X Offset (px):</label>
+                        <div class="flex space-x-2">
+                            <input type="number" id="smallOffsetXMin" value="-20" class="p-2 border rounded w-1/2" placeholder="Min">
+                            <input type="number" id="smallOffsetXMax" value="20" class="p-2 border rounded w-1/2" placeholder="Max">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <label>Y Offset (px):</label>
+                        <div class="flex space-x-2">
+                            <input type="number" id="smallOffsetYMin" value="-20" class="p-2 border rounded w-1/2" placeholder="Min">
+                            <input type="number" id="smallOffsetYMax" value="20" class="p-2 border rounded w-1/2" placeholder="Max">
+                        </div>
+                    </div>
+                    <!-- Kleine Logo Reihen/Raster-Konfiguration -->
+                    <div class="mt-4">
+                        <h4 class="font-semibold">Layout-Parameter</h4>
+                        <!-- Reihen-Layout -->
+                        <div id="layoutRow" class="mt-2">
+                            <label>Horizontaler Abstand (px):</label>
+                            <div class="flex space-x-2">
+                                <input type="number" id="rowDistanceMin" value="30" class="p-2 border rounded w-1/2" placeholder="Min">
+                                <input type="number" id="rowDistanceMax" value="50" class="p-2 border rounded w-1/2" placeholder="Max">
+                            </div>
+                            <label class="mt-2">Vertikaler Abstand (px):</label>
+                            <div class="flex space-x-2">
+                                <input type="number" id="rowSpacingMin" value="30" class="p-2 border rounded w-1/2" placeholder="Min">
+                                <input type="number" id="rowSpacingMax" value="50" class="p-2 border rounded w-1/2" placeholder="Max">
+                            </div>
+                            <label class="mt-2">Reihen-Offset (px):</label>
+                            <div class="flex space-x-2">
+                                <input type="number" id="rowOffsetMin" value="-10" class="p-2 border rounded w-1/2" placeholder="Min">
+                                <input type="number" id="rowOffsetMax" value="10" class="p-2 border rounded w-1/2" placeholder="Max">
+                            </div>
+                        </div>
+                        <!-- Raster-Layout -->
+                        <div id="layoutGrid" class="mt-2 hidden">
+                            <label>Anzahl Spalten:</label>
+                            <input type="number" id="gridColumns" value="3" class="p-2 border rounded w-full mt-1">
+                            <label class="mt-2">Anzahl Reihen:</label>
+                            <input type="number" id="gridRows" value="3" class="p-2 border rounded w-full mt-1">
+                            <label class="mt-2">Abstand Zwischen Logos (px):</label>
+                            <div class="flex space-x-2">
+                                <input type="number" id="gridDistanceX" value="30" class="p-2 border rounded w-1/2" placeholder="Horizontal">
+                                <input type="number" id="gridDistanceY" value="30" class="p-2 border rounded w-1/2" placeholder="Vertikal">
+                            </div>
+                        </div>
+                        <!-- Zufälliges Layout -->
+                        <div id="layoutRandom" class="mt-2 hidden">
+                            <label>Maximale Versuche pro Logo:</label>
+                            <input type="number" id="randomMaxAttempts" value="10" class="p-2 border rounded w-full mt-1">
+                        </div>
+                        <!-- Kreisförmiges Layout -->
+                        <div id="layoutCircle" class="mt-2 hidden">
+                            <label>Radius (px):</label>
+                            <input type="number" id="circleRadius" value="100" class="p-2 border rounded w-full mt-1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Zusätzliche Einstellungen -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Zusätzliche Einstellungen</h2>
+            <div class="flex space-x-4">
+                <div>
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" id="allowOverlap" class="form-checkbox h-5 w-5 text-blue-600">
+                        <span class="ml-2">Überlappen von Logos erlauben</span>
+                    </label>
+                </div>
+                <div>
+                    <label class="block">Hintergrundfarbe:</label>
+                    <input type="color" id="bgColor" value="#ffffff" class="mt-1 p-2 border rounded">
+                </div>
+                <div>
+                    <label class="block">Random Seed:</label>
+                    <input type="text" id="randomSeed" placeholder="Optional" class="mt-1 p-2 border rounded w-full">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Einstellungen Import/Export -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Einstellungen</h2>
+            <div class="flex space-x-4">
+                <button id="exportSettings" class="px-4 py-2 bg-green-500 text-white rounded">Einstellungen Exportieren</button>
+                <button id="importSettings" class="px-4 py-2 bg-yellow-500 text-white rounded">Einstellungen Importieren</button>
+                <input type="file" id="importFile" accept=".json" class="hidden">
+            </div>
+        </div>
+        
+        <!-- Export Button -->
+        <div class="mb-6">
+            <button id="generateMap" class="w-full px-4 py-3 bg-indigo-600 text-white rounded text-lg">Karte Generieren & Exportieren</button>
+        </div>
+        
+        <!-- Vorschau Section -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Vorschau</h2>
+            <div id="previewContainer" class="border rounded p-4 overflow-auto" style="max-height: 600px; background-color: #ffffff;">
+                <canvas id="previewCanvas"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript Section -->
+    <script>
+        // Utility Functions
+        class RNG {
+            constructor(seed) {
+                if (seed !== undefined) {
+                    this.seed = seed;
+                } else {
+                    this.seed = Math.floor(Math.random() * 2147483648);
+                }
+            }
+            next() {
+                this.seed = (this.seed * 16807) % 2147483647;
+                return this.seed / 2147483647;
+            }
+            nextRange(min, max) {
+                return this.next() * (max - min) + min;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const logoUpload = document.getElementById('logoUpload');
+            const logoList = document.getElementById('logoList');
+            const addLogoBtn = document.getElementById('addLogo');
+            const smallLogoCountType = document.getElementById('smallLogoCountType');
+            const smallLogoFixed = document.getElementById('smallLogoFixed');
+            const smallLogoRandom = document.getElementById('smallLogoRandom');
+            const smallLogoLayout = document.getElementById('smallLogoLayout');
+            const layoutRow = document.getElementById('layoutRow');
+            const layoutGrid = document.getElementById('layoutGrid');
+            const layoutRandom = document.getElementById('layoutRandom');
+            const layoutCircle = document.getElementById('layoutCircle');
+            const exportSettingsBtn = document.getElementById('exportSettings');
+            const importSettingsBtn = document.getElementById('importSettings');
+            const importFileInput = document.getElementById('importFile');
+            const generateMapBtn = document.getElementById('generateMap');
+            const previewCanvas = document.getElementById('previewCanvas');
+            const previewCtx = previewCanvas.getContext('2d');
+
+            let logos = [];
+            let rng = new RNG();
+            let debounceTimer;
+
+            // Handle Logo Upload
+            logoUpload.addEventListener('change', (e) => {
+                const files = e.target.files;
+                for(let file of files){
+                    if(file.type === 'image/png'){
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                            const img = new Image();
+                            img.src = event.target.result;
+                            img.onload = () => {
+                                logos.push({image: img, weight: 1});
+                                renderLogoList();
+                                triggerPreview();
+                            }
+                        }
+                        reader.readAsDataURL(file);
+                    }
+                }
+            });
+
+            // Render Logo List with Weights
+            function renderLogoList(){
+                logoList.innerHTML = '';
+                logos.forEach((logo, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center space-x-2';
+                    div.innerHTML = `
+                        <img src="${logo.image.src}" alt="Logo ${index+1}" class="w-16 h-16 object-contain border rounded">
+                        <input type="number" min="1" value="${logo.weight}" class="flex-1 p-2 border rounded" placeholder="Gewicht">
+                        <button class="removeLogo px-2 py-1 bg-red-500 text-white rounded">Entfernen</button>
+                    `;
+                    // Handle weight change
+                    div.querySelector('input').addEventListener('change', (e) => {
+                        logos[index].weight = parseInt(e.target.value) || 1;
+                        triggerPreview();
+                    });
+                    // Handle remove
+                    div.querySelector('.removeLogo').addEventListener('click', () => {
+                        logos.splice(index,1);
+                        renderLogoList();
+                        triggerPreview();
+                    });
+                    logoList.appendChild(div);
+                });
+            }
+
+            // Add Logo Button (optional functionality)
+            addLogoBtn.addEventListener('click', () => {
+                logoUpload.click();
+            });
+
+            // Small Logo Count Type Toggle
+            smallLogoCountType.addEventListener('change', () => {
+                if(smallLogoCountType.value === 'fixed'){
+                    smallLogoFixed.classList.remove('hidden');
+                    smallLogoRandom.classList.add('hidden');
+                } else {
+                    smallLogoFixed.classList.add('hidden');
+                    smallLogoRandom.classList.remove('hidden');
+                }
+                triggerPreview();
+            });
+
+            // Small Logo Layout Toggle
+            smallLogoLayout.addEventListener('change', () => {
+                const layout = smallLogoLayout.value;
+                layoutRow.classList.add('hidden');
+                layoutGrid.classList.add('hidden');
+                layoutRandom.classList.add('hidden');
+                layoutCircle.classList.add('hidden');
+                switch(layout){
+                    case 'row':
+                        layoutRow.classList.remove('hidden');
+                        break;
+                    case 'grid':
+                        layoutGrid.classList.remove('hidden');
+                        break;
+                    case 'random':
+                        layoutRandom.classList.remove('hidden');
+                        break;
+                    case 'circle':
+                        layoutCircle.classList.remove('hidden');
+                        break;
+                }
+                triggerPreview();
+            });
+
+            // Debounce function to limit the frequency of function calls
+            function debounce(func, delay) {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(func, delay);
+            }
+
+            // Add event listeners to all input elements for real-time preview
+            const inputs = document.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                input.addEventListener('input', () => {
+                    debounce(triggerPreview, 300);
+                });
+            });
+
+            // Export Settings
+            exportSettingsBtn.addEventListener('click', () => {
+                const settings = getCurrentSettings();
+                const blob = new Blob([JSON.stringify(settings, null, 2)], {type: 'application/json'});
+                saveAs(blob, 'watermark_map_settings.json');
+            });
+
+            // Import Settings
+            importSettingsBtn.addEventListener('click', () => {
+                importFileInput.click();
+            });
+
+            importFileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if(file && file.type === 'application/json'){
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const settings = JSON.parse(event.target.result);
+                        applySettings(settings);
+                    }
+                    reader.readAsText(file);
+                }
+            });
+
+            // Get Current Settings
+            function getCurrentSettings(){
+                return {
+                    logos: logos.map(l => ({src: l.image.src, weight: l.weight})),
+                    patchSize: document.getElementById('patchSize').value,
+                    patchAmount: document.getElementById('patchAmount').value,
+                    smallLogoCountType: smallLogoCountType.value,
+                    smallLogoFixedCount: document.getElementById('smallLogoFixedCount').value,
+                    smallLogoMin: document.getElementById('smallLogoMin').value,
+                    smallLogoMax: document.getElementById('smallLogoMax').value,
+                    smallLogoLayout: smallLogoLayout.value,
+                    // Row Layout Parameters
+                    rowDistanceMin: document.getElementById('rowDistanceMin').value,
+                    rowDistanceMax: document.getElementById('rowDistanceMax').value,
+                    rowSpacingMin: document.getElementById('rowSpacingMin').value,
+                    rowSpacingMax: document.getElementById('rowSpacingMax').value,
+                    rowOffsetMin: document.getElementById('rowOffsetMin').value,
+                    rowOffsetMax: document.getElementById('rowOffsetMax').value,
+                    // Grid Layout Parameters
+                    gridColumns: document.getElementById('gridColumns')?.value || 3,
+                    gridRows: document.getElementById('gridRows')?.value || 3,
+                    gridDistanceX: document.getElementById('gridDistanceX')?.value || 30,
+                    gridDistanceY: document.getElementById('gridDistanceY')?.value || 30,
+                    // Random Layout Parameters
+                    randomMaxAttempts: document.getElementById('randomMaxAttempts')?.value || 10,
+                    // Circle Layout Parameters
+                    circleRadius: document.getElementById('circleRadius')?.value || 100,
+                    // Randomization Settings
+                    largeScaleMin: document.getElementById('largeScaleMin').value,
+                    largeScaleMax: document.getElementById('largeScaleMax').value,
+                    largeOffsetXMin: document.getElementById('largeOffsetXMin').value,
+                    largeOffsetXMax: document.getElementById('largeOffsetXMax').value,
+                    largeOffsetYMin: document.getElementById('largeOffsetYMin').value,
+                    largeOffsetYMax: document.getElementById('largeOffsetYMax').value,
+                    smallScaleMin: document.getElementById('smallScaleMin').value,
+                    smallScaleMax: document.getElementById('smallScaleMax').value,
+                    smallOffsetXMin: document.getElementById('smallOffsetXMin').value,
+                    smallOffsetXMax: document.getElementById('smallOffsetXMax').value,
+                    smallOffsetYMin: document.getElementById('smallOffsetYMin').value,
+                    smallOffsetYMax: document.getElementById('smallOffsetYMax').value,
+                    allowOverlap: document.getElementById('allowOverlap').checked,
+                    bgColor: document.getElementById('bgColor').value,
+                    randomSeed: document.getElementById('randomSeed').value
+                };
+            }
+
+            // Apply Settings
+            async function applySettings(settings){
+                // Clear existing logos
+                logos = [];
+                logoList.innerHTML = '';
+                // Load logos
+                for(let logo of settings.logos){
+                    const img = new Image();
+                    img.src = logo.src;
+                    await new Promise((resolve) => { img.onload = resolve; });
+                    logos.push({image: img, weight: logo.weight});
+                    renderLogoList();
+                }
+                // Set other settings
+                document.getElementById('patchSize').value = settings.patchSize;
+                document.getElementById('patchAmount').value = settings.patchAmount;
+                smallLogoCountType.value = settings.smallLogoCountType;
+                if(settings.smallLogoCountType === 'fixed'){
+                    smallLogoFixed.classList.remove('hidden');
+                    smallLogoRandom.classList.add('hidden');
+                    document.getElementById('smallLogoFixedCount').value = settings.smallLogoFixedCount;
+                } else {
+                    smallLogoFixed.classList.add('hidden');
+                    smallLogoRandom.classList.remove('hidden');
+                    document.getElementById('smallLogoMin').value = settings.smallLogoMin;
+                    document.getElementById('smallLogoMax').value = settings.smallLogoMax;
+                }
+                smallLogoLayout.value = settings.smallLogoLayout;
+                // Trigger layout change to show/hide relevant parameters
+                smallLogoLayout.dispatchEvent(new Event('change'));
+                // Set layout-specific parameters
+                switch(settings.smallLogoLayout){
+                    case 'row':
+                        document.getElementById('rowDistanceMin').value = settings.rowDistanceMin;
+                        document.getElementById('rowDistanceMax').value = settings.rowDistanceMax;
+                        document.getElementById('rowSpacingMin').value = settings.rowSpacingMin;
+                        document.getElementById('rowSpacingMax').value = settings.rowSpacingMax;
+                        document.getElementById('rowOffsetMin').value = settings.rowOffsetMin;
+                        document.getElementById('rowOffsetMax').value = settings.rowOffsetMax;
+                        break;
+                    case 'grid':
+                        document.getElementById('gridColumns').value = settings.gridColumns;
+                        document.getElementById('gridRows').value = settings.gridRows;
+                        document.getElementById('gridDistanceX').value = settings.gridDistanceX;
+                        document.getElementById('gridDistanceY').value = settings.gridDistanceY;
+                        break;
+                    case 'random':
+                        document.getElementById('randomMaxAttempts').value = settings.randomMaxAttempts;
+                        break;
+                    case 'circle':
+                        document.getElementById('circleRadius').value = settings.circleRadius;
+                        break;
+                }
+                // Set Randomization Settings
+                document.getElementById('largeScaleMin').value = settings.largeScaleMin;
+                document.getElementById('largeScaleMax').value = settings.largeScaleMax;
+                document.getElementById('largeOffsetXMin').value = settings.largeOffsetXMin;
+                document.getElementById('largeOffsetXMax').value = settings.largeOffsetXMax;
+                document.getElementById('largeOffsetYMin').value = settings.largeOffsetYMin;
+                document.getElementById('largeOffsetYMax').value = settings.largeOffsetYMax;
+                document.getElementById('smallScaleMin').value = settings.smallScaleMin;
+                document.getElementById('smallScaleMax').value = settings.smallScaleMax;
+                document.getElementById('smallOffsetXMin').value = settings.smallOffsetXMin;
+                document.getElementById('smallOffsetXMax').value = settings.smallOffsetXMax;
+                document.getElementById('smallOffsetYMin').value = settings.smallOffsetYMin;
+                document.getElementById('smallOffsetYMax').value = settings.smallOffsetYMax;
+                document.getElementById('allowOverlap').checked = settings.allowOverlap;
+                document.getElementById('bgColor').value = settings.bgColor;
+                document.getElementById('randomSeed').value = settings.randomSeed;
+                // Trigger Preview
+                triggerPreview();
+            }
+
+            // Generate and Export Map
+            generateMapBtn.addEventListener('click', () => {
+                generateMap(true);
+            });
+
+            // Trigger Preview (without exporting)
+            function triggerPreview(){
+                generateMap(false);
+            }
+
+            // Generate Map Function
+            function generateMap(isExport){
+                if(logos.length === 0){
+                    alert('Bitte lade mindestens ein Logo hoch.');
+                    return;
+                }
+                // Initialize RNG
+                const seed = document.getElementById('randomSeed').value;
+                rng = new RNG(seed ? hashCode(seed) : undefined);
+
+                // Get Settings
+                const settings = getCurrentSettings();
+
+                // Calculate Map Size
+                const patchSize = parseInt(settings.patchSize);
+                const patchAmount = parseInt(settings.patchAmount);
+                const mapSize = patchSize * patchAmount;
+
+                // Setup Canvas
+                previewCanvas.width = mapSize;
+                previewCanvas.height = mapSize;
+                if(isExport){
+                    // Für Export, Hintergrund transparent lassen
+                    previewCtx.clearRect(0, 0, mapSize, mapSize);
+                } else {
+                    // Für Vorschau, Hintergrundfarbe nur CSS setzen
+                    previewCtx.clearRect(0, 0, mapSize, mapSize);
+                }
+
+                // Generate Grid
+                for(let row=0; row < patchAmount; row++){
+                    for(let col=0; col < patchAmount; col++){
+                        const fieldX = col * patchSize;
+                        const fieldY = row * patchSize;
+                        const placedLogos = []; // Liste der platzierten Logos im Feld
+
+                        // Draw Large Logo
+                        const largeLogo = chooseLogo();
+                        const largeScale = rng.nextRange(parseFloat(settings.largeScaleMin)/100, parseFloat(settings.largeScaleMax)/100);
+                        const largeWidth = largeLogo.image.width * largeScale;
+                        const largeHeight = largeLogo.image.height * largeScale;
+                        const largeOffsetX = rng.nextRange(parseFloat(settings.largeOffsetXMin), parseFloat(settings.largeOffsetXMax));
+                        const largeOffsetY = rng.nextRange(parseFloat(settings.largeOffsetYMin), parseFloat(settings.largeOffsetYMax));
+                        const largePosX = fieldX + (patchSize - largeWidth)/2 + largeOffsetX;
+                        const largePosY = fieldY + (patchSize - largeHeight)/2 + largeOffsetY;
+
+                        // Check for Overlap if not allowed
+                        if(!settings.allowOverlap){
+                            const newRect = {x: largePosX, y: largePosY, width: largeWidth, height: largeHeight};
+                            if(checkCollision(newRect, placedLogos)){
+                                // Wenn Kollision, überspringe das Platzieren dieses großen Logos
+                            } else {
+                                previewCtx.drawImage(largeLogo.image, largePosX, largePosY, largeWidth, largeHeight);
+                                placedLogos.push(newRect);
+                            }
+                        } else {
+                            previewCtx.drawImage(largeLogo.image, largePosX, largePosY, largeWidth, largeHeight);
+                            placedLogos.push({x: largePosX, y: largePosY, width: largeWidth, height: largeHeight});
+                        }
+
+                        // Determine number of Small Logos
+                        let smallCount = 5;
+                        if(settings.smallLogoCountType === 'fixed'){
+                            smallCount = parseInt(settings.smallLogoFixedCount);
+                        } else {
+                            smallCount = Math.floor(rng.nextRange(parseInt(settings.smallLogoMin), parseInt(settings.smallLogoMax)+1));
+                        }
+
+                        // Arrange Small Logos based on selected layout
+                        const layout = settings.smallLogoLayout;
+                        let smallPositions = [];
+                        switch(layout){
+                            case 'row':
+                                smallPositions = getRowLayoutPositions(settings, patchSize, smallCount, rng);
+                                break;
+                            case 'grid':
+                                smallPositions = getGridLayoutPositions(settings, patchSize, smallCount, rng);
+                                break;
+                            case 'random':
+                                smallPositions = getRandomLayoutPositions(settings, patchSize, smallCount, placedLogos, rng);
+                                break;
+                            case 'circle':
+                                smallPositions = getCircleLayoutPositions(settings, patchSize, smallCount, rng);
+                                break;
+                            default:
+                                smallPositions = [];
+                        }
+
+                        // Draw Small Logos
+                        smallPositions.forEach(pos => {
+                            const smallLogo = chooseLogo();
+                            const smallScale = rng.nextRange(parseFloat(settings.smallScaleMin)/100, parseFloat(settings.smallScaleMax)/100);
+                            const smallWidth = smallLogo.image.width * smallScale;
+                            const smallHeight = smallLogo.image.height * smallScale;
+                            const smallOffsetX = rng.nextRange(parseFloat(settings.smallOffsetXMin), parseFloat(settings.smallOffsetXMax));
+                            const smallOffsetY = rng.nextRange(parseFloat(settings.smallOffsetYMin), parseFloat(settings.smallOffsetYMax));
+                            const posX = fieldX + pos.x + smallOffsetX;
+                            const posY = fieldY + pos.y + smallOffsetY;
+
+                            const newRect = {x: posX, y: posY, width: smallWidth, height: smallHeight};
+                            if(!settings.allowOverlap){
+                                if(checkCollision(newRect, placedLogos)){
+                                    // Überspringe das Platzieren dieses kleinen Logos
+                                    return;
+                                }
+                            }
+                            previewCtx.drawImage(smallLogo.image, posX, posY, smallWidth, smallHeight);
+                            placedLogos.push(newRect);
+                        });
+                    }
+                }
+
+                if(isExport){
+                    // Exportieren als PNG mit transparentem Hintergrund
+                    previewCanvas.toBlob((blob) => {
+                        saveAs(blob, 'watermark_map.png');
+                    });
+                }
+            }
+
+            // Choose Logo Based on Weights
+            function chooseLogo(){
+                const totalWeight = logos.reduce((sum, logo) => sum + logo.weight, 0);
+                const rand = rng.nextRange(0, totalWeight);
+                let cumulative = 0;
+                for(let logo of logos){
+                    cumulative += logo.weight;
+                    if(rand <= cumulative){
+                        return logo;
+                    }
+                }
+                return logos[logos.length -1];
+            }
+
+            // Simple hash function for string seeds
+            function hashCode(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+                    hash = hash & hash;
+                }
+                return Math.abs(hash);
+            }
+
+            // Collision Detection Function
+            function checkCollision(newRect, placedRects){
+                for(let rect of placedRects){
+                    if(rectsOverlap(newRect, rect)){
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Function to check if two rectangles overlap
+            function rectsOverlap(r1, r2){
+                return !(r2.x > r1.x + r1.width || 
+                         r2.x + r2.width < r1.x || 
+                         r2.y > r1.y + r1.height ||
+                         r2.y + r2.height < r1.y);
+            }
+
+            // Layout Functions
+            function getRowLayoutPositions(settings, patchSize, smallCount, rng){
+                const positions = [];
+                const rowDistance = rng.nextRange(parseFloat(settings.rowDistanceMin), parseFloat(settings.rowDistanceMax));
+                const rowSpacing = rng.nextRange(parseFloat(settings.rowSpacingMin), parseFloat(settings.rowSpacingMax));
+                const rowOffset = rng.nextRange(parseFloat(settings.rowOffsetMin), parseFloat(settings.rowOffsetMax));
+
+                let currentY = rowOffset;
+                for(let i=0; i < smallCount; i++){
+                    positions.push({x: rowDistance * i, y: currentY});
+                }
+                return positions;
+            }
+
+            function getGridLayoutPositions(settings, patchSize, smallCount, rng){
+                const positions = [];
+                const columns = parseInt(settings.gridColumns);
+                const rows = parseInt(settings.gridRows);
+                const distanceX = parseFloat(settings.gridDistanceX);
+                const distanceY = parseFloat(settings.gridDistanceY);
+
+                const totalWidth = columns > 0 ? (columns - 1) * distanceX : 0;
+                const totalHeight = rows > 0 ? (rows - 1) * distanceY : 0;
+
+                const startX = (patchSize - totalWidth) / 2;
+                const startY = (patchSize - totalHeight) / 2;
+
+                for(let r=0; r < rows; r++){
+                    for(let c=0; c < columns; c++){
+                        if(positions.length >= smallCount) break;
+                        positions.push({x: startX + c * distanceX, y: startY + r * distanceY});
+                    }
+                }
+                return positions;
+            }
+
+            function getRandomLayoutPositions(settings, patchSize, smallCount, placedLogos, rng){
+                const positions = [];
+                const maxAttempts = parseInt(settings.randomMaxAttempts);
+                for(let i=0; i < smallCount; i++){
+                    let attempts = 0;
+                    while(attempts < maxAttempts){
+                        const x = rng.nextRange(0, patchSize);
+                        const y = rng.nextRange(0, patchSize);
+                        positions.push({x, y});
+                        break;
+                    }
+                }
+                return positions;
+            }
+
+            function getCircleLayoutPositions(settings, patchSize, smallCount, rng){
+                const positions = [];
+                const centerX = patchSize / 2;
+                const centerY = patchSize / 2;
+                const radius = parseFloat(settings.circleRadius);
+
+                for(let i=0; i < smallCount; i++){
+                    const angle = (2 * Math.PI / smallCount) * i + rng.nextRange(0, 2 * Math.PI);
+                    const x = centerX + radius * Math.cos(angle);
+                    const y = centerY + radius * Math.sin(angle);
+                    positions.push({x: x, y: y});
+                }
+                return positions;
+            }
+
+            // Choose Layout Parameters based on selected layout
+            // (This is already handled in the layout functions above)
+
+        });
+    </script>
+</body>
+</html>
