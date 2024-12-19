@@ -607,23 +607,39 @@ def main():
     testfile = input("Enter the image filename (test.jpg): ")
     if not testfile:
         testfile = "test.jpg"
-    base = Image.open("data/train/" + testfile)
+    base = Image.open("data/test/clean/" + testfile)
+    reference = Image.open(("data/test/watermarked/" + testfile).replace("source", "target"))
     wmm = WatermarkManager(swap_blue_red_channels=False)
-    result = wmm.apply_watermark(
-        base,
-        'map_43',
-        scale=0.5,
-        alpha=0.5,
-        position="center",
-        application_type="map",
-        artifacts_config=ArtifactsConfig(
-            alpha=0.66,
-            intensity=0.5,
-            kernel_size=7
+
+    num_samples = 3
+    width, height = base.size
+    grid_width = width * 2
+    grid_height = height * 2
+    grid_image = Image.new('RGB', (grid_width, grid_height))
+
+    previews = []
+    for i in range(num_samples):
+        result = wmm.apply_watermark(
+            base,
+            'map_train7_normal',
+            scale=1.0,
+            alpha=0.5,
+            position="random",
+            application_type="map",
+            artifacts_config=ArtifactsConfig(
+                alpha=0.66,
+                intensity=1.0,
+                kernel_size=7
+            )
         )
-    )
+        previews.append(result)
     
-    result.show()
+    grid_image.paste(reference, (0, 0))             # Top-left
+    grid_image.paste(previews[0], (width, 0))       # Top-right
+    grid_image.paste(previews[1], (0, height))      # Bottom-left
+    grid_image.paste(previews[2], (width, height))  # Bottom-right
+
+    grid_image.show()
 
 if __name__ == "__main__":
     main()
