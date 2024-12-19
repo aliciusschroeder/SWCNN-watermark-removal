@@ -1,5 +1,6 @@
 """
-Customized watermark variations for the watermarking process. Make sure to write your own watermark variations.
+Customized watermark variations for the watermarking process. 
+This only serves as an example, so make sure to write your own watermark variations.
 """
 
 import random
@@ -9,46 +10,50 @@ from utils.watermark import ArtifactsConfig
 
 def artifacts_variation():
     return ArtifactsConfig(
-        alpha=random.uniform(0.55, 0.77),
-        intensity=random.uniform(1.00, 2.00),
-        kernel_size=random.choice([7, 11, 15]),
+        alpha=1.00, #0.66 #random.uniform(0.55, 0.77),
+        intensity=random.uniform(0.50, 1.50),
+        kernel_size=random.choice([5, 6, 7]),
     )
 
-
-def logo_by_name(name: str, scale: float = 1.0):
+def base_stamp(name: str, scale: float = 1.0, alpha = 0.5):
     return {
         'watermark_id': name,
         'occupancy': 0,
         'scale': scale,
-        'alpha': random.uniform(0.33, 1),
+        'alpha': alpha,
         'position': 'random',
         'application_type': 'stamp',
     }
 
+def logo_by_name(name: str, scale: float = 1.0):
+    stamp = base_stamp(name, scale)
+    stamp['alpha'] = random.uniform(0.33, 1)
+    return stamp
 
-def logo_milios():
+
+def logo_milios(id: str = 'logo_milios'):
+    stamp = base_stamp(id)
+    stamp['scale'] = random.uniform(0.63, 0.93) # => 0.78 +- 0.15
+    stamp['alpha'] = random.uniform(0.33, 1)    # => 0.67 +- 0.33
+    return stamp
+
+def base_map(map: Union[str, int] = 43, scale: float = 0.5, alpha = 0.5):
     return {
-        'watermark_id': 'logo_milios',
-        'occupancy': 0,
-        'scale': random.uniform(0.63, 0.93),  # => 0.78 +- 0.15
-        'alpha': random.uniform(0.33, 1),     # => 0.67 +- 0.33
-        'position': 'random',
-        'application_type': 'stamp',
-    }
-
-
-def milios_map(map: Union[str, int] = 43, scale: float = 0.5):
-    return {
-        'watermark_id': f'map_{map}',
+        'watermark_id': f'{map}',
         'occupancy': 0,
         'scale': scale,
-        'position': 'random',
         'application_type': 'map',
+        'alpha': alpha,
         'artifacts_config': artifacts_variation(),
     }
 
+def milios_map(id: Union[str, int] = 43, scale: float = 0.5, alpha = 0.5):
+    map = base_map(id, scale, alpha)
+    map['position'] = 'random'
+    return map
 
-def milios_map_edgecase():
+
+def milios_map_edgecase(id: str = 'map_43', scale: float = 0.5, alpha = 0.5):
     """
     Simulates an edge case where the watermark is placed at the top or bottom of the image and not fully visible / cropped off.
     """
@@ -56,17 +61,12 @@ def milios_map_edgecase():
         [0, -512 + 17])  # +17 to avoid moving the main watermark totally out of the image
     x = random.randint(383, 383 + 512) // 2
     y = (random.uniform(1393, 1431) + move_to_bottom) // 2
-    return {
-        'watermark_id': 'map_43',
-        'occupancy': 0,
-        'scale': 0.5,
-        'position': (x, y),
-        'application_type': 'map',
-        'artifacts_config': artifacts_variation(),
-    }
+    map = base_map(id, scale=scale, alpha=alpha)
+    map['position'] = (x, y)
+    return map
 
 
-def milios_map_around_center():
+def milios_map_around_center(id: str = 'map_43', scale: float = 0.5, alpha = 0.5):
     """
     Focusses on cases where the center of the watermark map (which differs a little from the rest of the watermark) is placed somewhere in the image.
     It is purposely possible to be cropped off to the left or right, but not to the top or bottom because that's handled by the edgecase.
@@ -76,33 +76,23 @@ def milios_map_around_center():
     x = random.randint(383, 383 + 512) // 2
     # 75 is the height of the center feature in the watermark map
     y = random.uniform(1390 - 512 + 150, 1390) // 2
-    return {
-        'watermark_id': 'map_43',
-        'occupancy': 0,
-        'scale': 0.5,
-        'position': (x, y),
-        'application_type': 'map',
-        'artifacts_config': artifacts_variation(),
-    }
+
+    map = base_map(id, scale=scale, alpha=alpha)
+    map['position'] = (x, y)
+    return map
 
 
-def milios_map_center():
-    return {
-        'watermark_id': 'map_43',
-        'occupancy': 0,
-        'scale': 0.5,
-        'position': 'center',
-        'application_type': 'map',
-        'artifacts_config': ArtifactsConfig(
-            alpha=0.66,
-            intensity=1.5,
-            kernel_size=11
-        ),
-    }
+def milios_map_center(id: str = 'map_43', scale: float = 0.5, alpha = 0.5):
+    map = base_map(id, scale=scale, alpha=alpha)
+    map['position'] = 'center'
+    return map
 
+
+val_relevant_methods = [5, 6, 7, 8]
 
 def get_watermark_variations():
     scale = random.uniform(0.75, 1.25)
+
     variants = []
     variants.append(logo_by_name('logo_ppco', scale=scale))     # 0
     variants.append(logo_by_name('logo_mr', scale=scale))       # 1
@@ -114,30 +104,12 @@ def get_watermark_variations():
     variants.append(milios_map_around_center())     # 7
     variants.append(milios_map_center())            # 8
 
-    weights = [
-        1,  # logo_ppco
-        1,  # logo_mr
-        1,  # logo_mreb
-        1,  # logo_mrlnb
-        1,  # logo_milios
-        6,  # milios_map
-        2,  # milios_map_edgecase
-        2,  # milios_map_around_center
-        1,  # milios_map_center
-    ]
+    weights = [0]*len(variants)
 
-    # Fine-tuning weights
-    weights = [
-        0,  # logo_ppco
-        0,  # logo_mr
-        0,  # logo_mreb
-        0,  # logo_mrlnb
-        2,  # logo_milios
-        8,  # milios_map
-        4,  # milios_map_edgecase
-        4,  # milios_map_around_center
-        1,  # milios_map_center
-    ]
+    weights[5] = 5  # milios_map
+    weights[6] = 1  # milios_map_edgecase
+    weights[7] = 1  # milios_map_around_center
+    weights[8] = 1  # milios_map_center
 
     if len(variants) != len(weights):
         raise ValueError(
