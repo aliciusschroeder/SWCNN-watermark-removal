@@ -14,7 +14,6 @@ The training process includes:
 - Periodic validation on a separate dataset
 """
 
-# TODO(high): --Generate deterministic watermarks for validation images-- (done!) and _save their outputs to Tensorboard_
 # TODO(high): Think about a more sophisticated LR scheduler, as exponential loss reduction doesn't seem to stop before epoch 40 @ 79 batches @ 8 batch size
 # TODO(medium): Implement validation loss calculation
 # TODO(medium): Look out for possible performance improvements in the training loop
@@ -34,10 +33,11 @@ import torch.optim as optim
 from torch import autocast, GradScaler # Mixed precision training can improve performance. If it causes problems, remove GradScaler/autocast related lines
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter # type: ignore
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 from configs.tensorboard import TensorBoardConfig
 from configs.training import TrainingConfig, ResumeOptions
-from configs.watermark_variations import get_watermark_validation_variation, get_watermark_variations
+from configs.watermark_variations import get_watermark_variations, val_relevant_methods
 from dataset import Dataset, TestDataset
 from models import HN
 from utils.helper import get_config
@@ -61,6 +61,7 @@ class WatermarkCleaner:
         self.config = config
         self.tb_config = tensorboard_config
         self.resume_options = resume_options
+        self.watermark_variants, self.watermark_weights = get_watermark_variations()
         self.device = torch.device("cuda" if torch.cuda.is_available() 
                                    else "cpu")
         print(f"Using device: {self.device.type}")
@@ -82,11 +83,11 @@ class WatermarkCleaner:
         self.criterion = (nn.MSELoss(reduction='sum') if self.config.loss_type == "L2" 
                          else nn.L1Loss(reduction='sum'))
         self.criterion.to(self.device)
-        
         self.optimizer = optim.Adam(self.model.parameters(), 
                                     lr=self.config.initial_lr)
-        
-        self.scheduler = torch.optim.lr_scheduler.ConstantLR(self.optimizer, factor=1.0, total_iters=1)
+
+        self.scheduler = CosineAnnealingWarmRestarts(self.optimizer, T_0=50, eta_min=0.0)
+        # self.scheduler = torch.optim.lr_scheduler.ConstantLR(self.optimizer, factor=1.0, total_iters=1)
         
         self.scaler = GradScaler() # Remove this line if not using mixed precision training
         
@@ -190,28 +191,13 @@ class WatermarkCleaner:
             pin_memory=True
         )
 
-    def _apply_watermark_val(
-            self,
-            img: torch.Tensor,
-    ) -> torch.Tensor:
-        """Apply a deterministic watermark to the input image for validation.
-        
-        Args:
-            img: Input image tensor
-            
-        Returns:
-            Watermarked image tensor
-        """
-        watermarked_img = self.watermark_manager.add_watermark_generic(
-            img,
-            self_supervision=self.config.self_supervised,
-            same_random_wm_seed=42,
-            **get_watermark_validation_variation()
-        )
-        return watermarked_img
+    def freeze_block(self, block: nn.Module, freeze: bool) -> None:
+        """Freeze or unfreeze a block of the model."""
+        for param in block.parameters():
+            param.requires_grad = not freeze
 
 
-    def _apply_watermark_train(
+    def _process_watermark_application(
         self, 
         img: torch.Tensor, 
         seed: Optional[int] = None,
@@ -227,16 +213,15 @@ class WatermarkCleaner:
         Returns:
             Tuple of (watermarked image, variant choice used)
         """
-        variants, weights = get_watermark_variations()
         
         if variant_choice is None:
-            variant_choice = random.choices(range(len(variants)), weights=weights, k=1)[0]
+            variant_choice = random.choices(range(len(self.watermark_variants)), weights=self.watermark_weights, k=1)[0]
             
         watermarked_img = self.watermark_manager.add_watermark_generic(
             img,
             self_supervision=self.config.self_supervised,
             same_random_wm_seed=seed,
-            **variants[variant_choice]
+            **self.watermark_variants[variant_choice]
         )
         return watermarked_img, variant_choice
 
@@ -254,7 +239,9 @@ class WatermarkCleaner:
     def log_learning_rate(self, epoch: int) -> None:
         # Log learning rate
         current_lr = self.optimizer.param_groups[0]['lr']
-        self.writer.add_scalar('Learning_Rate', current_lr, epoch + 1)
+
+        # Don't add one to epoch here as it's called at the start of the epoch
+        self.writer.add_scalar('Learning_Rate', current_lr, epoch) 
 
 
     def _train_step(
@@ -273,9 +260,9 @@ class WatermarkCleaner:
         self.optimizer.zero_grad()
 
         random_seed = random.getrandbits(128)
-        watermarked_img, variant_choice = self._apply_watermark_train(img, random_seed)
+        watermarked_img, variant_choice = self._process_watermark_application(img, random_seed)
 
-        target_img = (self._apply_watermark_train(img, random_seed, variant_choice)[0]
+        target_img = (self._process_watermark_application(img, random_seed, variant_choice)[0]
                      if self.config.self_supervised else img)
 
         watermarked_img = watermarked_img.to(self.device)
@@ -345,20 +332,21 @@ class WatermarkCleaner:
 
         with torch.no_grad():
             for i in range(len(self.val_dataset)):
-                img = torch.unsqueeze(self.val_dataset[i], 0)
-                
-                # Ensure dimensions are multiples of 32
-                _, _, w, h = img.shape
-                w, h = (int(dim // 32 * 32) for dim in (w, h))
-                img = img[:, :, :w, :h]
-                random.seed(i)
-                watermarked_img = self._apply_watermark_val(img)
-                img, watermarked_img = img.to(self.device), watermarked_img.to(self.device)
-                
-                output = torch.clamp(self.model(watermarked_img), 0., 1.)
-                total_psnr += batch_PSNR(output, img, 1.)
+                for variant in val_relevant_methods:
+                    img = torch.unsqueeze(self.val_dataset[i], 0)
+                    
+                    # Ensure dimensions are multiples of 32
+                    _, _, w, h = img.shape
+                    w, h = (int(dim // 32 * 32) for dim in (w, h))
+                    img = img[:, :, :w, :h]
+                    random.seed(i+variant)
+                    watermarked_img, _ = self._process_watermark_application(img, seed=i, variant_choice=variant)
+                    img, watermarked_img = img.to(self.device), watermarked_img.to(self.device)
+                    
+                    output = torch.clamp(self.model(watermarked_img), 0., 1.)
+                    total_psnr += batch_PSNR(output, img, 1.)
 
-        avg_psnr = total_psnr / len(self.val_dataset)
+        avg_psnr = total_psnr / (len(self.val_dataset) * len(val_relevant_methods))
         self.writer.add_scalar("Epoch_Metrics_Val/PSNR_avg", avg_psnr, epoch + 1)
         return avg_psnr
 
@@ -482,7 +470,7 @@ class WatermarkCleaner:
                     self.writer.add_scalar(f"Gradients/{name}_norm", grad_norm, global_step)
         
         is_nth_global_step = global_step % self.tb_config.save_images_nth_global_step == 0 and global_step > 0
-        is_nth_epoch = epoch % self.tb_config.save_images_nth_epoch == 0 and epoch > 0
+        is_nth_epoch = epoch % self.tb_config.save_images_nth_epoch == 0 and epoch > 0 and batch_step == 0
 
         # Periodically log images
         if is_nth_global_step or is_nth_epoch:
@@ -494,7 +482,7 @@ class WatermarkCleaner:
             ], normalize=True, nrow=3)
             
             self.writer.add_image(
-                f'Images_Train/epoch_{epoch + 1}_batch_{batch_step}',
+                f'Images_Train/epoch_{epoch}_batch_{batch_step}',
                 img_grid,
                 global_step
             )
@@ -581,7 +569,6 @@ def main():
     config = TrainingConfig(
         model_output_path=yaml_config['train_model_out_path_SWCNN'],
         data_path=yaml_config['data_path'],
-        batch_size=8,
     )
     
     trainer = WatermarkCleaner(config, resume_options=resume_options)
