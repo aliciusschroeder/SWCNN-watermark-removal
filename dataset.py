@@ -76,7 +76,7 @@ class Dataset(TorchDataset):
         return torch.tensor(data, dtype=torch.float32)
 
 
-class TestDataset(TorchDataset):
+class PairedDataset(TorchDataset):
     """
     Dataset for loading paired image patches from an HDF5 file for testing.
 

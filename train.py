@@ -34,7 +34,7 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from configs.tensorboard import TensorBoardConfig
 from configs.training import TrainingConfig, ResumeOptions
 from configs.watermark_variations import get_watermark_variations, val_relevant_methods
-from dataset import Dataset, TestDataset
+from dataset import Dataset, PairedDataset
 from models import HN
 from utils.helper import get_config
 from utils.train_preparation import load_froze_vgg16
@@ -167,7 +167,8 @@ class WatermarkCleaner:
                                      data_path=self.config.data_path)
         self.val_dataset = Dataset(train=False, mode='color', 
                                    data_path=self.config.data_path)
-        self.test_dataset = TestDataset(mode='color',
+        self.test_dataset = PairedDataset(purpose='test',
+                                        mode='color',
                                         data_path=self.config.data_path)
         
         self.train_loader = DataLoader(
