@@ -14,6 +14,9 @@ tmp/
 # Training, Validation & Test Data
 data/**/*.[jp][pn]g
 data/**/*.h5
+data/**/*.sh
+data/**/*.ps1
+data/**/*.bat
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
