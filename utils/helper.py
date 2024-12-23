@@ -12,5 +12,5 @@ def print_debug(*values: object, debug: bool = False) -> None:
         print(*values)
 
 
-StepType = Literal['train', 'validation', 'test']
+StepType = Literal['train', 'validation', 'test', 'finetune']
 ModeType = Literal['gray', 'color']
