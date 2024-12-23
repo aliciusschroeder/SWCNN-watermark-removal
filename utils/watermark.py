@@ -607,8 +607,8 @@ def main():
     testfile = input("Enter the image filename (test.jpg): ")
     if not testfile:
         testfile = "test.jpg"
-    base = Image.open("data/test/clean/" + testfile)
-    reference = Image.open(("data/test/watermarked/" + testfile).replace("source", "target"))
+    base = Image.open("data/test/clean/" + testfile).convert("RGBA")
+    reference = Image.open(("data/test/watermarked/" + testfile).replace("source", "target")).convert("RGBA")
     wmm = WatermarkManager(swap_blue_red_channels=False)
 
     num_samples = 3
