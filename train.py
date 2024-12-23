@@ -39,7 +39,7 @@ from models import HN
 from utils.helper import get_config
 from utils.train_preparation import load_froze_vgg16
 from utils.validation import batch_PSNR
-from utils.watermark import WatermarkManager, ArtifactsConfig
+from utils.watermark import WatermarkManager
 
 PRINT_DURING_TRAINING = False
 
