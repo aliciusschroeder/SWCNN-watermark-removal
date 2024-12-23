@@ -14,6 +14,6 @@ class DataPreparationConfiguration:
     mode: ModeType = 'color'
     scales: List[Union[int, float]] = field(
         default_factory=lambda: [1])
-    max_samples: Tuple[int, int] = (0, 0)
-    sampling_method: SamplingMethodType = 'default'
-    seed: Union[int, str] = 42
+    max_samples: Tuple[int, int] = (5440, 96)
+    sampling_method: SamplingMethodType = 'mixed'
+    seed: Union[int, str] = 5005135

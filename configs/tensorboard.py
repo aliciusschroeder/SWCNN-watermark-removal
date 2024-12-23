@@ -16,10 +16,10 @@ class TensorBoardConfig:
     log_hyperparameters: bool = False
 
     # exclusive of epoch/step 0
-    save_checkpoint_nth_epoch: int = 5
+    save_checkpoint_nth_epoch: int = 1
     save_images_nth_epoch: int = 5
-    save_images_nth_global_step: int = 100
-    test_nth_epoch: int = 5
+    save_images_nth_global_step: int = 500
+    test_nth_epoch: int = 1
 
     # number of batches to save to tensorboard during testing
     test_batches_to_save: int = 3

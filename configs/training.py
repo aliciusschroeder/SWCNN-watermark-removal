@@ -5,11 +5,11 @@ from typing import Literal, Optional
 @dataclass
 class TrainingConfig:
     """Configuration parameters for the SWCNN training process."""
-    batch_size: int = 8
+    batch_size: int = 32
     num_layers: int = 17  # Number of total layers(DnCNN)
-    epochs: int = 100
+    epochs: int = 500
     milestone: int = 30  # Learning rate decay epoch
-    initial_lr: float = 1e-3
+    initial_lr: float = 0.002
     model_output_path: str = "output/models"
     architecture: Literal["HN"] = "HN"
     loss_type: Literal["L1", "L2"] = "L1"

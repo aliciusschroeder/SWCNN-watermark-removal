@@ -517,8 +517,22 @@ class WatermarkCleaner:
         print("Starting training!")
 
         best_psnr = 0.0
-        
+
+        unfreeze_range = [i for i in range(319, 346)]
+
         for epoch in range(self.start_epoch, self.config.epochs):
+            if epoch == 360:
+                self.scheduler.base_lrs = [0.00025]
+
+            # block 1.0 alrady frozen from epoch 81, 3.0 from 91, 3.2 from 146-224, 251-264, 320-345
+            # self.freeze_block(self.model.module._block1[0], freeze=True) # fully unfrozen in Stage V
+            if epoch > 145 and epoch not in unfreeze_range:
+                self.freeze_block(self.model.module._block3[0], freeze=True)
+                self.freeze_block(self.model.module._block3[2], freeze=True)    
+            else:
+                self.freeze_block(self.model.module._block3[0], freeze=False)
+                self.freeze_block(self.model.module._block3[2], freeze=False)
+
             epoch_losses = {
                 'reconstruction': 0.0,
                 'perceptual': 0.0,
@@ -584,7 +598,7 @@ def main():
     """Entry point for training the watermark removal model."""
     resume_options = None
     yaml_config = get_config('configs/config.yaml')
-    # resume_options = ResumeOptions(checkpoint_filepath='output/models/HN_per_L1_n2n_035_best.pth', log_dir='output/runs/004-finetune-001') # , log_dir='output/runs/002'
+    resume_options = ResumeOptions(checkpoint_filepath='output/models/HN_per_L1_n2n_292.pth') # , log_dir='output/runs/002'
     config = TrainingConfig(
         model_output_path=yaml_config['train_model_out_path_SWCNN'],
         data_path=yaml_config['data_path'],

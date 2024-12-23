@@ -621,16 +621,11 @@ def main():
     for i in range(num_samples):
         result = wmm.apply_watermark(
             base,
-            'map_train7_normal',
+            'map_train7alien',
             scale=1.0,
-            alpha=0.5,
+            alpha=0.66,
             position="random",
             application_type="map",
-            artifacts_config=ArtifactsConfig(
-                alpha=0.66,
-                intensity=1.0,
-                kernel_size=7
-            )
         )
         previews.append(result)
     
