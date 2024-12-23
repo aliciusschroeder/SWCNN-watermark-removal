@@ -2,7 +2,7 @@ import glob
 import logging
 import os
 import random
-from typing import List, Tuple, Union
+from typing import List, Literal, Tuple, Union
 
 import cv2
 import h5py
@@ -447,6 +447,7 @@ class DataPreparation():
         clean_path: str,
         watermarked_path: str,
         mode: ModeType = 'color',
+        purpose: Literal['test', 'finetune'] = 'test'
     ) -> None:
         """
         Prepares the test dataset by pairing clean and watermarked images and saving them into an HDF5 file.
@@ -457,7 +458,7 @@ class DataPreparation():
             watermarked_path (str): Path to the directory containing watermarked images.
             mode (ModeType, optional): 'gray' or 'color'. Defaults to 'color'.
         """
-        h5f_path = DataPreparation.get_h5_filepath(data_path, 'test', mode)
+        h5f_path = DataPreparation.get_h5_filepath(data_path, purpose, mode)
         clean_files = sorted(glob.glob(os.path.join(clean_path, "*.jpg")))
         watermarked_files = sorted(
             glob.glob(os.path.join(watermarked_path, "*.jpg")))

@@ -1,6 +1,6 @@
 import argparse
 import os
-from typing import List, Union
+from typing import List, Literal, Union
 
 from utils.data_preparation import DataPreparation
 from utils.helper import ModeType, get_config
@@ -61,15 +61,17 @@ if not os.path.exists(data_path):
 
 def main():
     step = input(
-        "Prepare data for training + validation or test? (_train_/test): ")
-    if not step in ['train', 'test']:
+        "Prepare data for training + validation or test? (_train_/test/finetune): ")
+    if step == "ft":
+        step = "finetune"
+    if not step in ['train', 'test', 'finetune']:
         if not step:
             step = 'train'
         else:
             raise ValueError(f"Invalid step: {step}")
 
     if step == 'train':
-        DataPreparation.prepare_data(
+        return DataPreparation.prepare_data(
             data_path=config['data_path'],
             patch_size=parsed_args.patch_size,
             stride=parsed_args.stride,
@@ -81,15 +83,17 @@ def main():
             seed=parsed_args.seed
         )
 
-    elif step == 'test':
-        clean_path = os.path.join(data_path, "test", "clean")
-        watermarked_path = os.path.join(data_path, "test", "watermarked")
-        DataPreparation.prepare_test_data(
-            data_path=data_path,
-            clean_path=clean_path,
-            watermarked_path=watermarked_path,
-            mode=parsed_args.mode
-        )
+    assert step in ['test', 'finetune'], f"Invalid step: {step}"
+    purpose: Literal['test', 'finetune'] = 'test' if step == 'test' else 'finetune'
+    clean_path = os.path.join(data_path, step, "clean")
+    watermarked_path = os.path.join(data_path, step, "watermarked")
+    return DataPreparation.prepare_test_data(
+        data_path=data_path,
+        clean_path=clean_path,
+        watermarked_path=watermarked_path,
+        mode=parsed_args.mode,
+        purpose=purpose,
+    )
 
 
 if __name__ == "__main__":

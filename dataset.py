@@ -1,6 +1,6 @@
 import os
 import random
-from typing import List, Tuple
+from typing import List, Literal, Tuple
 
 import h5py
 import numpy as np
@@ -86,18 +86,20 @@ class PairedDataset(TorchDataset):
         data_path (str): Path to the dataset directory.
     """
 
-    def __init__(self, mode: ModeType = 'color', data_path: str = 'data/'):
+    def __init__(self, purpose: Literal['test', 'finetune'] = 'test', mode: ModeType = 'color', data_path: str = 'data/'):
         """
-        Initializes the TestDataset.
+        Initializes the PairedDataset.
 
         Args:
+            purpose (Literal['test', 'finetune'], optional): Purpose of the dataset, 'test' or 'finetune'. Defaults to 'test'.
             mode (ModeType, optional): Mode of images, 'gray' or 'color'. Defaults to 'color'.
             data_path (str, optional): Path to the dataset. Defaults to 'data/'.
         """
         super().__init__()
         self.mode: ModeType = mode
         self.data_path = data_path
-        h5f_path = DataPreparation.get_h5_filepath(data_path, 'test', mode)
+        self.purpose: Literal['test', 'finetune'] = purpose
+        h5f_path = DataPreparation.get_h5_filepath(data_path, purpose, mode)
 
         if not os.path.exists(h5f_path):
             raise FileNotFoundError(f"HDF5 file not found at path: {h5f_path}")
@@ -130,7 +132,7 @@ class PairedDataset(TorchDataset):
             Tuple[torch.Tensor, torch.Tensor]: Tensor representations of the clean and watermarked image patches.
         """
         h5f_path = DataPreparation.get_h5_filepath(
-            self.data_path, 'test', self.mode)
+            self.data_path, self.purpose, self.mode)
 
         with h5py.File(h5f_path, 'r') as h5f:
             clean_key, watermarked_key = self.keys[index]
