@@ -4,14 +4,14 @@ import matplotlib.pyplot as plt
 
 # Load all checkpoints
 
-start = 207
-end = 237
-step = 3
+start = 5
+end = 100
+step = 5
 
 assert (end - start) % step == 0, "Invalid range and step combination"
 
 checkpoint_files = {
-    i: f"./../output/model-history/{i:03d}.pth"
+    i: f"./output/models/finetune/model-history/{i:03d}.pth"
     for i in range(start, end + 1, step)
 }
 

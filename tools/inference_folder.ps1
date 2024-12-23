@@ -27,7 +27,7 @@ if (-not (Check-VirtualEnv)) {
 }
 
 # Define variables
-$InputDirectory = "data/test/watermarked"
+$InputDirectory = "data/samples"
 $OutputBaseDirectory = "output/inference_runs"
 
 # Prompt user for the model path
