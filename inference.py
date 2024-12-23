@@ -197,17 +197,14 @@ def preprocess_image(image_path, patch_size=256, stride=128, device='cuda'):
         raise FileNotFoundError(f"Input image not found at {image_path}")
 
     # Load image using OpenCV
-    image_bgr = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    if image_bgr is None:
+    image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    if image is None:
         raise ValueError(f"Failed to read the image from {image_path}")
 
-    original_size = image_bgr.shape[:2]  # (H, W)
-
-    # Convert BGR to RGB
-    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    original_size = image.shape[:2]  # (H, W)
 
     # Normalize to [0, 1]
-    image_normalized = image_rgb.astype(np.float32) / 255.0
+    image_normalized = image.astype(np.float32) / 255.0
 
     # Pad the image to fit patches
     padded_image, pad, num_patches_h, num_patches_w = pad_image_for_patching(
@@ -261,8 +258,9 @@ def main():
     # Preprocess the image: extract patches
     patches_tensor, positions, padded_size, pad, original_size = preprocess_image(
         args.input_image, patch_size=256, stride=128, device=device.type)
-    print(f"Input image loaded and preprocessed. Original size: {
-          original_size}, Padded size: {padded_size}")
+    print(f"Input image loaded and preprocessed. " +
+          f"Original size: {original_size}, " +
+          f"Padded size: {padded_size}")
 
     processed_patches = []
     batch_size = 16  # Adjust based on GPU memory
